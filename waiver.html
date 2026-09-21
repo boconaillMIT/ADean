@@ -1,0 +1,226 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Waiver Pre-Check</title>
+  <script src="https://appsforoffice.microsoft.com/lib/1/hosted/office.js"></script>
+  <style>
+    :root {
+      --fg: #1a1a1a; --muted: #666; --ok: #137a3f; --bad: #b3261e; --warn: #8a6d00;
+      --bg: #ffffff; --line: #e0e0e0; --btn: #0f6cbd; --btnfg: #fff; --panel: #f5f7fa;
+    }
+    @media (prefers-color-scheme: dark) {
+      :root { --fg:#eee; --muted:#aaa; --ok:#4ac97e; --bad:#f2857c; --warn:#e8c65b;
+              --bg:#1f1f1f; --line:#3a3a3a; --panel:#2a2a2a; }
+    }
+    body { font-family: "Segoe UI", system-ui, sans-serif; color: var(--fg);
+           background: var(--bg); margin: 0; padding: 14px; font-size: 14px; }
+    h1 { font-size: 15px; margin: 0 0 10px; }
+    button { background: var(--btn); color: var(--btnfg); border: 0; border-radius: 4px;
+             padding: 8px 12px; font-size: 14px; cursor: pointer; margin: 4px 4px 4px 0; }
+    button.secondary { background: transparent; color: var(--btn);
+                       border: 1px solid var(--btn); }
+    button:disabled { opacity: .5; cursor: default; }
+    #status { color: var(--muted); margin: 10px 0; min-height: 1.2em; }
+    .verdict { font-weight: 600; padding: 8px 10px; border-radius: 4px; margin: 8px 0; }
+    .verdict.ok  { background: rgba(19,122,63,.12);  color: var(--ok); }
+    .verdict.bad { background: rgba(179,38,30,.12);   color: var(--bad); }
+    ul.fields { list-style: none; padding: 0; margin: 8px 0; }
+    ul.fields li { padding: 6px 0; border-bottom: 1px solid var(--line); }
+    ul.fields li.ok  .mark { color: var(--ok); }
+    ul.fields li.bad .mark { color: var(--bad); }
+    .mark { font-weight: 700; margin-right: 8px; }
+    .note { color: var(--muted); }
+    .flag { color: var(--bad); font-size: 12px; margin-top: 6px; }
+    .section-label { font-weight: 600; margin: 14px 0 4px; }
+    .caution { color: var(--warn); font-size: 12px; margin: 6px 0; }
+    .preview { background: var(--panel); border: 1px solid var(--line); border-radius: 4px;
+               padding: 10px; margin: 8px 0; max-height: 300px; overflow: auto; font-size: 13px; }
+    .preview a { color: var(--btn); word-break: break-all; }
+    hr { border: 0; border-top: 1px solid var(--line); margin: 14px 0; }
+  </style>
+</head>
+<body>
+  <h1>Waiver Pre-Check</h1>
+  <button id="checkBtn" disabled>Check this waiver request</button>
+  <div id="status">Loading&#8230;</div>
+  <div id="results"></div>
+  <div id="draftArea"></div>
+
+  <script>
+    var FUNCTION_URL = "/.netlify/functions/parley-waiver-check";
+
+    var LABELS = {
+      principal_investigator: "PI name",
+      project_title: "Project title",
+      sponsor_name: "Sponsor",
+      dlc: "DLC",
+      due_date: "Due date",
+      ras_contact: "RAS contact",
+      late_reason: "Reason late"
+    };
+
+    // ---------------------------------------------------------------------------
+    // SIGNATURES (optional). Key = the sender's MIT email, all lowercase.
+    // If the logged-in user's email matches a key here, that full block is used.
+    // Otherwise the reply is signed "Best, <their name>" automatically.
+    // To add yours: copy the Fahim example, set the key to your mit.edu address,
+    // and edit the block. Use <br> for line breaks.
+    // NOTE: set Fahim's key below to his actual mit.edu address for it to apply.
+    // ---------------------------------------------------------------------------
+    var SIGNATURES = {
+      // "fahim@mit.edu": "Best,<br><br>Fahim Shinwari<br>Senior Finance Administrator<br>He/Him/His<br><br>Office of the Dean<br>School of Engineering<br>Massachusetts Institute of Technology<br>Building 3 Room 282 | Cambridge, MA 02139<br>617-258-7808",
+      // "oconaill@mit.edu": "Best,<br><br>Br&#237;an O'Conaill<br>Assistant Dean for Finance and Administration<br>School of Engineering<br>Massachusetts Institute of Technology"
+    };
+
+    // Approval boilerplate - EXACT policy text. Do not let anything paraphrase this.
+    var APPROVAL_BODY_HTML =
+      "Hi,<br><br>" +
+      "The Dean is able to grant a waiver on the proposal identified below; however, RAS cannot guarantee the timely submission of proposals received less than five days before the deadline. The proposal that is submitted to RAS must be the final and complete copy to be sent to the sponsor. Please note: the SoE policy is to grant only a single waiver per proposal, and we are unable to grant exceptions.<br><br>" +
+      "The school's policy can be found at:<br>" +
+      "<a href=\"https://soe.mit.edu/administrative-offices/administrative-officers-policies-forms-and-resources/\">https://soe.mit.edu/administrative-offices/administrative-officers-policies-forms-and-resources/</a><br><br>" +
+      "Please understand that RAS needs to have five business days to adequately review proposals to protect MIT's concerns about publication restrictions, ownership of Intellectual Property, Foreign National restrictions etc. If RAS does not have adequate time to conduct these reviews, it will not be able to address the issues usually required for a complete proposal submission i.e., any exceptions to the terms and conditions at time of proposal. If the proposal is selected for funding, the negotiation could be more challenging because the sponsors will not have heard about MIT's exceptions at the time of proposal as is typically the requirement.<br><br>" +
+      "We appreciate your cooperation and understanding.";
+
+    var lastResult = null;
+
+    Office.onReady(function () {
+      var btn = document.getElementById("checkBtn");
+      btn.disabled = false;
+      btn.addEventListener("click", runCheck);
+      setStatus("Ready. Open a waiver request and press the button.");
+    });
+
+    function runCheck() {
+      document.getElementById("draftArea").innerHTML = "";
+      var item = Office.context.mailbox.item;
+      var subject = item.subject || "";
+      setStatus("Reading email&#8230;");
+      item.body.getAsync(Office.CoercionType.Text, function (res) {
+        if (res.status !== Office.AsyncResultStatus.Succeeded) {
+          setStatus("Could not read the email body: " + res.error.message);
+          return;
+        }
+        var body = res.value || "";
+        setStatus("Checking against the rubric via Parley&#8230;");
+        fetch(FUNCTION_URL, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ subject: subject, body: body })
+        })
+          .then(function (r) { return r.json().then(function (d) { return { ok: r.ok, d: d }; }); })
+          .then(function (x) {
+            if (!x.ok) { setStatus("Error: " + (x.d.error || "request failed") + (x.d.detail ? " - " + x.d.detail : "")); return; }
+            lastResult = x.d.result;
+            render(x.d);
+          })
+          .catch(function (e) { setStatus("Request failed: " + e); });
+      });
+    }
+
+    function setStatus(msg) { document.getElementById("status").textContent = msg; }
+
+    function render(data) {
+      setStatus("");
+      var out = document.getElementById("results");
+
+      if (!data.result) {
+        out.innerHTML = "<div class='verdict bad'>Could not parse a structured result</div><pre>" +
+          escapeHtml(data.raw || "(no content returned)") + "</pre>";
+        return;
+      }
+
+      var r = data.result;
+      var items = r.items || {};
+      var rows = Object.keys(items).map(function (k) {
+        var it = items[k];
+        var cls = it.present ? "ok" : "bad";
+        var mark = it.present ? "\u2713" : "\u2717";
+        var note = it.note ? " <span class='note'>- " + escapeHtml(it.note) + "</span>" : "";
+        return "<li class='" + cls + "'><span class='mark'>" + mark + "</span>" + label(k) + note + "</li>";
+      }).join("");
+
+      var verdict = (r.overall === "complete")
+        ? "<div class='verdict ok'>Complete - all required fields present</div>"
+        : "<div class='verdict bad'>Incomplete - " + escapeHtml(r.missing_summary || "missing fields") + "</div>";
+
+      var flag = (items.late_reason && items.late_reason.bad_faith)
+        ? "<div class='flag'>\u26A0 Reason appears to dismiss the process - flag for a human.</div>"
+        : "";
+
+      out.innerHTML = verdict + "<ul class='fields'>" + rows + "</ul>" + flag;
+
+      // Draft actions - human chooses; the tool never auto-sends or auto-approves.
+      var draft = document.getElementById("draftArea");
+      draft.innerHTML =
+        "<hr><div class='section-label'>Draft a reply</div>" +
+        "<button id='approveBtn'>Draft approval reply</button>" +
+        "<button id='missingBtn' class='secondary'>Draft missing-info reply</button>" +
+        "<div id='previewWrap'></div>";
+      document.getElementById("approveBtn").addEventListener("click", showApproval);
+      document.getElementById("missingBtn").addEventListener("click", showMissing);
+    }
+
+    function getSignature() {
+      var email = "";
+      try { email = (Office.context.mailbox.userProfile.emailAddress || "").toLowerCase(); } catch (e) {}
+      if (SIGNATURES[email]) return SIGNATURES[email];
+      var name = "";
+      try { name = Office.context.mailbox.userProfile.displayName || ""; } catch (e) {}
+      return "Best,<br><br>" + escapeHtml(name);
+    }
+
+    function showApproval() {
+      var html = APPROVAL_BODY_HTML + "<br><br>" + getSignature();
+      showPreview(html, true);
+    }
+
+    function showMissing() {
+      var items = (lastResult && lastResult.items) || {};
+      var missing = Object.keys(items)
+        .filter(function (k) { return !items[k].present; })
+        .map(function (k) { return "<li>" + label(k) + "</li>"; })
+        .join("");
+      if (!missing) missing = "<li>(nothing flagged as missing - check the request manually)</li>";
+
+      var html =
+        "Hi,<br><br>" +
+        "Thank you for your proposal waiver request. Before RAS can review it, the following required information appears to be missing:<br>" +
+        "<ul>" + missing + "</ul>" +
+        "For reference, a complete waiver request includes the PI name, project title, sponsor, DLC, the actual proposal due date, a RAS contact, and the reason the proposal is late. Please reply with the missing details and we'll proceed.<br><br>" +
+        getSignature();
+      showPreview(html, false);
+    }
+
+    function showPreview(html, isApproval) {
+      var wrap = document.getElementById("previewWrap");
+      var caution = isApproval
+        ? "<div class='caution'>\u26A0 Send only once the waiver has actually been approved. This tool checks completeness, not approval, and does not yet check the one-waiver-per-proposal / 3-per-year limit.</div>"
+        : "";
+      wrap.innerHTML =
+        caution +
+        "<div class='preview'>" + html + "</div>" +
+        "<button id='openReplyBtn'>Open as reply in Outlook</button>";
+      document.getElementById("openReplyBtn").addEventListener("click", function () {
+        openReply(html);
+      });
+    }
+
+    function openReply(html) {
+      try {
+        Office.context.mailbox.item.displayReplyForm(html);
+      } catch (e) {
+        setStatus("Could not open a reply: " + e);
+      }
+    }
+
+    function label(k) { return LABELS[k] || k; }
+    function escapeHtml(s) {
+      return String(s).replace(/[&<>]/g, function (c) {
+        return { "&": "&amp;", "<": "&lt;", ">": "&gt;" }[c];
+      });
+    }
+  </script>
+</body>
+</html>
