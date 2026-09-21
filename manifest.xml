@@ -4,7 +4,7 @@
   Works in new Outlook for Windows, classic Outlook, Outlook on the web, and Mac.
 
   BEFORE SIDELOADING:
-    1. Replace every occurrence of  YOURSITE.netlify.app  with your Netlify subdomain.
+    1. Replace every occurrence of  OLD.netlify.app  with your Netlify subdomain.
     2. Host waiver.html at the site root and the function at
        /.netlify/functions/parley-waiver-check
     3. Add icon PNGs (16, 32, 64, 80, 128 px) at the site root, or point these
@@ -23,9 +23,9 @@
   <DefaultLocale>en-US</DefaultLocale>
   <DisplayName DefaultValue="Waiver Pre-Check"/>
   <Description DefaultValue="Checks a Proposal Waiver Request against the SOE-research rubric via Parley."/>
-  <IconUrl DefaultValue="https://YOURSITE.netlify.app/icon-64.png"/>
-  <HighResolutionIconUrl DefaultValue="https://YOURSITE.netlify.app/icon-128.png"/>
-  <SupportUrl DefaultValue="https://YOURSITE.netlify.app/"/>
+  <IconUrl DefaultValue="https://waivercheck.netlify.app/icon-64.png"/>
+  <HighResolutionIconUrl DefaultValue="https://waivercheck.netlify.app/icon-128.png"/>
+  <SupportUrl DefaultValue="https://waivercheck.netlify.app/"/>
 
   <Hosts>
     <Host Name="Mailbox"/>
@@ -40,7 +40,7 @@
   <FormSettings>
     <Form xsi:type="ItemRead">
       <DesktopSettings>
-        <SourceLocation DefaultValue="https://YOURSITE.netlify.app/waiver.html"/>
+        <SourceLocation DefaultValue="https://waivercheck.netlify.app/waiver.html"/>
         <RequestedHeight>280</RequestedHeight>
       </DesktopSettings>
     </Form>
@@ -90,12 +90,12 @@
     </Hosts>
     <Resources>
       <bt:Images>
-        <bt:Image id="icon16" DefaultValue="https://YOURSITE.netlify.app/icon-16.png"/>
-        <bt:Image id="icon32" DefaultValue="https://YOURSITE.netlify.app/icon-32.png"/>
-        <bt:Image id="icon80" DefaultValue="https://YOURSITE.netlify.app/icon-80.png"/>
+        <bt:Image id="icon16" DefaultValue="https://waivercheck.netlify.app/icon-16.png"/>
+        <bt:Image id="icon32" DefaultValue="https://waivercheck.netlify.app/icon-32.png"/>
+        <bt:Image id="icon80" DefaultValue="https://waivercheck.netlify.app/icon-80.png"/>
       </bt:Images>
       <bt:Urls>
-        <bt:Url id="taskpaneUrl" DefaultValue="https://YOURSITE.netlify.app/waiver.html"/>
+        <bt:Url id="taskpaneUrl" DefaultValue="https://waivercheck.netlify.app/waiver.html"/>
       </bt:Urls>
       <bt:ShortStrings>
         <bt:String id="groupLabel" DefaultValue="Waiver Tools"/>
