@@ -1,5 +1,5 @@
 // netlify/functions/parley-waiver-check.js
-//
+// 
 // Proxy between the Outlook "Waiver Pre-Check" add-in and MIT Parley.
 // The add-in POSTs { subject, body }; this function calls Parley with the
 // waiver rubric and returns the structured result. The PARLEY_API_KEY stays
