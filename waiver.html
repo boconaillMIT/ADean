@@ -23,7 +23,7 @@
     button.secondary { background:transparent; color:var(--btn); border:1px solid var(--btn); }
     button:disabled { opacity:.5; cursor:default; }
     summary { cursor:pointer; color:var(--muted); font-size:13px; }
-    textarea { width:100%; box-sizing:border-box; margin-top:6px; font-family:inherit; font-size:13px;
+    textarea, input.cc { width:100%; box-sizing:border-box; margin-top:6px; font-family:inherit; font-size:13px;
                padding:6px; border:1px solid var(--line); border-radius:4px; background:var(--bg); color:var(--fg); }
     #status { color:var(--muted); margin:10px 0; min-height:1.2em; }
     .verdict { font-weight:600; padding:8px 10px; border-radius:4px; margin:8px 0; }
@@ -86,8 +86,7 @@
 
     // RAS Contract Administrator roster (name -> email), verified from the RAS staff
     // directory. Used ONLY to validate the CA the submitter named and supply their
-    // email. The tool never picks a CA from the DLC. Refresh when RAS reassigns.
-    // Roster last refreshed: 2026-09-22.
+    // email for CC. The tool never picks a CA from the DLC. Roster last refreshed: 2026-09-22.
     var CA_LIST = [
       {name:"Courtney Bensey", last:"Bensey", email:"cbensey@mit.edu"},
       {name:"Michael P. Corcoran", last:"Corcoran", email:"mcorcor@mit.edu"},
@@ -112,22 +111,18 @@
       {name:"Bernadette Vallely", last:"Vallely", email:"bvallely@mit.edu"}
     ];
 
-    // Optional full signature blocks. Key = sender's mit.edu email (lowercase),
-    // value = identity lines only (NO leading "Best,"/"Sincerely,").
-    var SIGNATURES = {
-      "oconaill@mit.edu": "Br&#237;an O'Conaill<br>Assistant Dean for Finance and Administration<br>School of Engineering<br>Massachusetts Institute of Technology"
-      // "fahim@mit.edu": "Fahim Shinwari<br>Senior Finance Administrator<br>He/Him/His<br><br>Office of the Dean<br>School of Engineering<br>Massachusetts Institute of Technology<br>Building 3 Room 282 | Cambridge, MA 02139<br>617-258-7808"
-    };
-
+    // Waiver approval policy text (EXACT). No signature here on purpose - Outlook's
+    // own signature is appended natively when the reply opens, so the sender signs
+    // as themselves and there's no duplicate.
     var APPROVAL_BODY_HTML =
       "Hi,<br><br>" +
       "The Dean is able to grant a waiver on the proposal identified below; however, RAS cannot guarantee the timely submission of proposals received less than five days before the deadline. The proposal that is submitted to RAS must be the final and complete copy to be sent to the sponsor. Please note: the SoE policy is to grant only a single waiver per proposal, and we are unable to grant exceptions.<br><br>" +
       "The school's policy can be found at:<br>" +
       "<a href=\"https://soe.mit.edu/administrative-offices/administrative-officers-policies-forms-and-resources/\">https://soe.mit.edu/administrative-offices/administrative-officers-policies-forms-and-resources/</a><br><br>" +
       "Please understand that RAS needs to have five business days to adequately review proposals to protect MIT's concerns about publication restrictions, ownership of Intellectual Property, Foreign National restrictions etc. If RAS does not have adequate time to conduct these reviews, it will not be able to address the issues usually required for a complete proposal submission i.e., any exceptions to the terms and conditions at time of proposal. If the proposal is selected for funding, the negotiation could be more challenging because the sponsors will not have heard about MIT's exceptions at the time of proposal as is typically the requirement.<br><br>" +
-      "We appreciate your cooperation and understanding.";
+      "We appreciate your cooperation and understanding.<br><br>Best,";
 
-    var lastResult = null, lastSubject = "", lastBodyText = "";
+    var lastResult = null;
 
     Office.onReady(function () {
       var btn = document.getElementById("checkBtn");
@@ -139,7 +134,7 @@
     function runCheck() {
       document.getElementById("draftArea").innerHTML = "";
       var item = Office.context.mailbox.item;
-      lastSubject = item.subject || "";
+      var subject = item.subject || "";
       var pastedEl = document.getElementById("pastedText");
       var pasted = pastedEl ? (pastedEl.value || "") : "";
       setStatus("Reading email&#8230;");
@@ -147,13 +142,12 @@
         if (res.status !== Office.AsyncResultStatus.Succeeded) {
           setStatus("Could not read the email body: " + res.error.message); return;
         }
-        lastBodyText = res.value || "";
-        var body = lastBodyText;
+        var body = res.value || "";
         if (pasted.trim()) body += "\n\n----- PASTED ATTACHMENT / ADDITIONAL TEXT -----\n" + pasted;
         setStatus("Checking via Parley&#8230;");
         fetch(FUNCTION_URL, {
           method:"POST", headers:{ "Content-Type":"application/json" },
-          body: JSON.stringify({ subject: lastSubject, body: body })
+          body: JSON.stringify({ subject: subject, body: body })
         })
         .then(function (r) { return r.json().then(function (d) { return { ok:r.ok, d:d }; }); })
         .then(function (x) {
@@ -184,7 +178,7 @@
 
       var btns = "";
       if (r.waiver) {
-        btns += "<button id='wApprove'>Waiver: approval email</button>" +
+        btns += "<button id='wApprove'>Waiver: approval reply-all</button>" +
                 "<button id='wMissing' class='secondary'>Waiver: missing-info reply</button>";
       }
       if (r.one_time_pi) {
@@ -248,16 +242,6 @@
       return "<h2>One-time PI/Co-PI Status Request</h2>" + v + renderFieldList(items, OTPI_LABELS, ["abstract"]) + effortFlag + facts + reminder;
     }
 
-    // ---- signatures ----
-    function signatureIdentity() {
-      var email = "";
-      try { email = (Office.context.mailbox.userProfile.emailAddress || "").toLowerCase(); } catch (e) {}
-      if (SIGNATURES[email]) return SIGNATURES[email];
-      var name = "";
-      try { name = Office.context.mailbox.userProfile.displayName || ""; } catch (e) {}
-      return escapeHtml(name);
-    }
-    function closeWith(word) { return word + ",<br><br>" + signatureIdentity(); }
     function slot(val, placeholder) {
       return (val!==null&&val!==undefined&&String(val).trim()!=="") ? escapeHtml(String(val)) : "<b>["+placeholder+"]</b>";
     }
@@ -275,58 +259,45 @@
       return { status:"notfound" };
     }
 
-    // ---- waiver drafts ----
+    // ---- waiver: approval (reply-all, native quoting + Outlook signature) ----
     function draftWaiverApproval() {
       var items = (lastResult && lastResult.waiver && lastResult.waiver.items) || {};
       var ras = items.ras_contact || {};
       var caName = ras.value || "";
       var caMatch = matchCA(caName);
-      var html = APPROVAL_BODY_HTML + "<br><br>" + closeWith("Best");
-      showApprovalPreview(html, caMatch, caName);
-    }
 
-    function showApprovalPreview(html, caMatch, caNameRaw) {
-      var wrap = document.getElementById("previewWrap");
+      // CC to ADD (reply-all already carries everyone on the original): CA + fixed RAS.
+      var toAdd = [];
+      if (caMatch.status === "matched") toAdd.push(caMatch.ca.email);
+      FIXED_RAS_CC.forEach(function (e) { toAdd.push(e); });
+      var seen = {}, ccList = [];
+      toAdd.forEach(function (e) { if (!seen[e.toLowerCase()]) { seen[e.toLowerCase()] = 1; ccList.push(e); } });
+
       var caStatus;
       if (caMatch.status === "matched") {
-        caStatus = "<div class='ca-status ok'>RAS contact matched: " + escapeHtml(caMatch.ca.name) +
-                   " (" + caMatch.ca.email + ") - will be added to CC.</div>";
+        caStatus = "<div class='ca-status ok'>RAS contact matched: " + escapeHtml(caMatch.ca.name) + " (" + caMatch.ca.email + ").</div>";
       } else if (caMatch.status === "ambiguous") {
-        caStatus = "<div class='ca-status bad'>\u26A0 \"" + escapeHtml(caNameRaw) + "\" matches more than one RAS CA (" +
-                   caMatch.hits.map(function(h){return escapeHtml(h.name);}).join(", ") + "). Add the correct one to CC manually.</div>";
+        caStatus = "<div class='ca-status bad'>\u26A0 \"" + escapeHtml(caName) + "\" matches more than one RAS CA (" +
+          caMatch.hits.map(function(h){return escapeHtml(h.name);}).join(", ") + "). Add the correct one to CC manually.</div>";
       } else if (caMatch.status === "notfound") {
-        caStatus = "<div class='ca-status bad'>\u26A0 Named RAS contact \"" + escapeHtml(caNameRaw) +
-                   "\" is not on the RAS Contract Administrator roster. No CA email added - verify and add manually before sending.</div>";
+        caStatus = "<div class='ca-status bad'>\u26A0 Named RAS contact \"" + escapeHtml(caName) +
+          "\" is not on the RAS CA roster. Not added below - verify and add the CA to CC manually.</div>";
       } else {
-        caStatus = "<div class='ca-status bad'>\u26A0 No RAS contact was named in the request. Add the CA to CC manually before sending.</div>";
+        caStatus = "<div class='ca-status bad'>\u26A0 No RAS contact was named. Add the CA to CC manually.</div>";
       }
-      var caution = "<div class='caution'>\u26A0 Send only once the waiver has actually been approved. This tool checks completeness, not approval, and does not check the one-waiver-per-proposal / 3-per-year limit. Opens a new email: To = requester, CC = everyone on the original + the RAS CA + Corcoran/Holmes/Horton. Review recipients before sending.</div>";
-      wrap.innerHTML = caStatus + caution + "<div class='preview'>" + html + "</div>" +
-        "<button id='openBtn'>Open as email</button>";
-      document.getElementById("openBtn").addEventListener("click", function () { openApprovalEmail(html, caMatch); });
-    }
 
-    function openApprovalEmail(html, caMatch) {
-      var item = Office.context.mailbox.item;
-      var fromEmail = (item.from && item.from.emailAddress) ? item.from.emailAddress : "";
-      var toArr = (item.to || []).map(function (r) { return r.emailAddress; });
-      var ccArr = (item.cc || []).map(function (r) { return r.emailAddress; });
+      var wrap = document.getElementById("previewWrap");
+      wrap.innerHTML =
+        caStatus +
+        "<div class='caution'>\u26A0 Send only once the waiver has actually been approved. This checks completeness, not approval, and does not check the one-waiver-per-proposal / 3-per-year limit.</div>" +
+        "<div class='preview'>" + APPROVAL_BODY_HTML + "</div>" +
+        "<div class='section-label'>Add to CC (reply-all already includes everyone on the original):</div>" +
+        "<input class='cc' id='ccField' type='text' readonly value='" + ccList.join("; ") + "' />" +
+        "<button id='copyCcBtn' class='secondary'>Copy CC addresses</button>" +
+        "<button id='openBtn'>Open reply-all</button>";
 
-      var toRecipients = fromEmail ? [fromEmail] : [];
-      var cc = [].concat(toArr, ccArr, FIXED_RAS_CC);
-      if (fromEmail) cc.push(fromEmail);                 // "everyone on the initial email"
-      if (caMatch.status === "matched") cc.push(caMatch.ca.email);
-
-      // dedupe (case-insensitive); drop anything already in To
-      var seen = {}, ccFinal = [];
-      toRecipients.forEach(function (e) { if (e) seen[e.toLowerCase()] = 1; });
-      cc.forEach(function (e) { if (e && !seen[e.toLowerCase()]) { seen[e.toLowerCase()] = 1; ccFinal.push(e); } });
-
-      var subj = "RE: " + (lastSubject || "").replace(/^(re|fw|fwd):\s*/i, "");
-      var fromName = item.from ? (item.from.displayName || item.from.emailAddress || "") : "";
-      var quote = "<br><br><hr>From: " + escapeHtml(fromName) + "<br>Subject: " + escapeHtml(lastSubject || "") +
-                  "<br><br>" + escapeHtml(lastBodyText || "").replace(/\n/g, "<br>");
-      openNewMessage(toRecipients, ccFinal, subj, html + quote);
+      document.getElementById("copyCcBtn").addEventListener("click", function () { copyText(ccList.join("; ")); });
+      document.getElementById("openBtn").addEventListener("click", function () { openReplyAll(APPROVAL_BODY_HTML); });
     }
 
     function draftWaiverMissing() {
@@ -335,8 +306,7 @@
         .map(function (k) { return "<li>" + (WAIVER_LABELS[k]||k) + "</li>"; }).join("");
       if (!missing) missing = "<li>(nothing flagged - check manually)</li>";
       var html = "Hi,<br><br>Thank you for your proposal waiver request. Before RAS can review it, the following required information appears to be missing:<br><ul>" +
-        missing + "</ul>For reference, a complete waiver request includes the PI name, project title, sponsor, DLC, the actual proposal due date, a RAS contact, and the reason the proposal is late. Please reply with the missing details and we'll proceed.<br><br>" +
-        closeWith("Best");
+        missing + "</ul>For reference, a complete waiver request includes the PI name, project title, sponsor, DLC, the actual proposal due date, a RAS contact, and the reason the proposal is late. Please reply with the missing details and we'll proceed.<br><br>Best,";
       showReplyPreview(html);
     }
 
@@ -347,8 +317,7 @@
         .map(function (k) { return "<li>" + (OTPI_LABELS[k]||k) + "</li>"; }).join("");
       if (!missing) missing = "<li>(nothing flagged - check manually)</li>";
       var html = "Hi,<br><br>Thank you for your one-time PI/Co-PI status request. Before it can go for School review, the following required elements appear to be missing or incomplete:<br><ul>" +
-        missing + "</ul>Please revise and resubmit with these included. Note that School review can take one to two weeks once a complete request is received.<br><br>" +
-        closeWith("Best");
+        missing + "</ul>Please revise and resubmit with these included. Note that School review can take one to two weeks once a complete request is received.<br><br>Best,";
       showReplyPreview(html);
     }
 
@@ -371,8 +340,7 @@
         "The proposal period is " + slot(f.proposal_period,"period") + " and if awarded, the funding would provide " +
         slot(f.salary_support,"salary support") + " of salary support each year.<br><br>" +
         "For context, " + priorLine + "<br><br>" +
-        "I reviewed the submission and recommend it for approval. Please let me know if you agree and/or if you have any further questions.<br><br>" +
-        closeWith("Sincerely");
+        "I reviewed the submission and recommend it for approval. Please let me know if you agree and/or if you have any further questions.<br><br>Sincerely,";
       var subj = "One-time PI status recommendation" + (f.proposed_pi ? " - " + f.proposed_pi : "");
       showNewMessagePreview(html, PLATA_EMAIL, subj);
     }
@@ -395,6 +363,10 @@
       try { Office.context.mailbox.item.displayReplyForm(html); }
       catch (e) { setStatus("Could not open a reply: " + e); }
     }
+    function openReplyAll(html) {
+      try { Office.context.mailbox.item.displayReplyAllForm(html); }
+      catch (e) { setStatus("Could not open reply-all: " + e); }
+    }
     function openNewMessage(toArr, ccArr, subject, html) {
       try {
         if (typeof Office.context.mailbox.displayNewMessageFormAsync !== "function") {
@@ -409,6 +381,17 @@
           }
         );
       } catch (e) { setStatus("Could not open a new message: " + e + " - copy the draft above instead."); }
+    }
+
+    function copyText(text) {
+      if (navigator.clipboard && navigator.clipboard.writeText) {
+        navigator.clipboard.writeText(text).then(function () { setStatus("CC addresses copied to clipboard."); })
+          .catch(function () { selectCcField(); });
+      } else { selectCcField(); }
+    }
+    function selectCcField() {
+      var el = document.getElementById("ccField");
+      if (el) { el.focus(); el.select(); setStatus("Select the highlighted addresses and copy (Ctrl+C)."); }
     }
 
     function escapeHtml(s) {
