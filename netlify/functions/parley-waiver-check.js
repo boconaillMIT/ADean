@@ -80,7 +80,7 @@ Rules:
 - Presence only. Do NOT judge merits (small scope, dollars, uniqueness, criticality, mentorship quality) - those are human decisions.
 - Do NOT compute whether effort is within any cap; just report effort_percent as a number if stated.
 - NEVER invent a name, number, or fact. Use null or empty string when something is not stated.
-- No commentary outside the JSON.
+- No commentary, reasoning, or explanation of any kind outside the JSON. Do NOT think out loud. Your entire response must start with { and end with } and contain nothing else.
 
 Submission:
 Subject: {{subject}}
@@ -150,7 +150,14 @@ exports.handler = async (event) => {
     let content =
       (data && data.choices && data.choices[0] && data.choices[0].message && data.choices[0].message.content) || "";
     content = content.replace(/```json/gi, "").replace(/```/g, "").trim();
-
+    // If the model added commentary around the JSON, extract the JSON object itself.
+    var firstBrace = content.indexOf("{");
+    var lastBrace = content.lastIndexOf("}");
+    if (firstBrace > 0 || lastBrace < content.length - 1) {
+      if (firstBrace !== -1 && lastBrace !== -1 && lastBrace > firstBrace) {
+        content = content.slice(firstBrace, lastBrace + 1);
+      }
+    }
     let parsed = null;
     try {
       parsed = JSON.parse(content);
