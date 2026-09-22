@@ -50,6 +50,12 @@
   <h1>SoE Request Pre-Check</h1>
   <button id="checkBtn" disabled>Check this request</button>
   <div id="status">Loading&#8230;</div>
+    <details id="pasteBox" style="margin:8px 0;">
+    <summary style="cursor:pointer; color:var(--muted); font-size:13px;">Paste PDF / extra text (optional)</summary>
+    <textarea id="pastedText" rows="6"
+      placeholder="Paste the PDF text or any extra request content here. It will be included in the check."
+      style="width:100%; box-sizing:border-box; margin-top:6px; font-family:inherit; font-size:13px; padding:6px; border:1px solid var(--line); border-radius:4px; background:var(--bg); color:var(--fg);"></textarea>
+  </details>
   <div id="results"></div>
   <div id="draftArea"></div>
 
@@ -101,15 +107,21 @@
       document.getElementById("draftArea").innerHTML = "";
       var item = Office.context.mailbox.item;
       var subject = item.subject || "";
+      var pastedEl = document.getElementById("pastedText");
+      var pasted = pastedEl ? (pastedEl.value || "") : "";
       setStatus("Reading email&#8230;");
       item.body.getAsync(Office.CoercionType.Text, function (res) {
         if (res.status !== Office.AsyncResultStatus.Succeeded) {
           setStatus("Could not read the email body: " + res.error.message); return;
         }
+        var body = res.value || "";
+        if (pasted.trim()) {
+          body += "\n\n----- PASTED ATTACHMENT / ADDITIONAL TEXT -----\n" + pasted;
+        }
         setStatus("Checking via Parley&#8230;");
         fetch(FUNCTION_URL, {
           method:"POST", headers:{ "Content-Type":"application/json" },
-          body: JSON.stringify({ subject: subject, body: res.value || "" })
+          body: JSON.stringify({ subject: subject, body: body })
         })
         .then(function (r) { return r.json().then(function (d) { return { ok:r.ok, d:d }; }); })
         .then(function (x) {
