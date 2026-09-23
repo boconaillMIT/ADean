@@ -1,0 +1,222 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Email to Calendar</title>
+<!-- calendar.html  (v1.0, 2026-09-23) — new-Outlook port of CreateCalendarFromEmail -->
+<script src="https://appsforoffice.microsoft.com/lib/1/hosted/office.js"></script>
+<style>
+  :root {
+    --ink: #1f2328;
+    --muted: #5b6470;
+    --line: #d6dbe1;
+    --paper: #ffffff;
+    --wash: #f3f5f7;
+    --accent: #0f5c8c;
+    --warn-bg: #fff4d6;
+    --warn-ink: #7a5300;
+    --err-ink: #a4262c;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --ink: #e6e9ec; --muted: #9aa4af; --line: #3a4148; --paper: #1e2226;
+      --wash: #262b30; --accent: #6cb4e4; --warn-bg: #3d3316; --warn-ink: #f2cf73; --err-ink: #f1707b;
+    }
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0; padding: 14px; background: var(--paper); color: var(--ink);
+    font: 14px/1.45 "Segoe UI", "Segoe UI Variable", -apple-system, system-ui, sans-serif;
+  }
+  h1 { font-size: 17px; font-weight: 600; margin: 0 0 4px; }
+  .lede { color: var(--muted); margin: 0 0 14px; }
+  button {
+    font: inherit; border-radius: 4px; padding: 7px 12px; cursor: pointer;
+    border: 1px solid var(--accent); background: var(--accent); color: #fff;
+  }
+  button.secondary { background: transparent; color: var(--accent); }
+  button:disabled { opacity: .5; cursor: default; }
+  button:focus-visible, input:focus-visible, textarea:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+  .row { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
+  #status { margin: 12px 0; color: var(--muted); min-height: 1.4em; }
+  #status.error { color: var(--err-ink); }
+  .event { border-top: 1px solid var(--line); padding: 14px 0 6px; }
+  .event h2 { font-size: 15px; font-weight: 600; margin: 0 0 8px; }
+  label { display: block; font-size: 12px; color: var(--muted); margin: 8px 0 2px; }
+  input[type=text], input[type=datetime-local], textarea {
+    width: 100%; font: inherit; color: var(--ink); background: var(--wash);
+    border: 1px solid var(--line); border-radius: 4px; padding: 6px 8px;
+  }
+  textarea { min-height: 54px; resize: vertical; }
+  .pair { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+  @media (max-width: 300px) { .pair { grid-template-columns: 1fr; } }
+  .flag { background: var(--warn-bg); color: var(--warn-ink); border-radius: 4px; padding: 6px 8px; margin: 8px 0 0; font-size: 13px; }
+  .check { display: flex; gap: 6px; align-items: center; margin: 4px 0 12px; color: var(--muted); font-size: 13px; }
+  .actions { margin: 10px 0 4px; }
+</style>
+</head>
+<body>
+  <h1>Email to calendar</h1>
+  <p class="lede">Finds the events in this email. Review each one, then open it as a calendar entry to save.</p>
+
+  <div class="row">
+    <button id="findBtn" disabled>Find events</button>
+  </div>
+  <label class="check"><input type="checkbox" id="includeOriginal" checked> Add the original email to each entry's notes</label>
+
+  <div id="status" role="status"></div>
+  <div id="events"></div>
+
+<script>
+// ---------- Constants ----------
+const FUNCTION_URL = "/.netlify/functions/parley-calendar-extract";
+const MAX_FORM_BODY = 30000;   // displayNewAppointmentForm caps body at 32 KB
+const RECUR_LABELS = {
+  weekly_monday: "Mondays", weekly_tuesday: "Tuesdays", weekly_wednesday: "Wednesdays",
+  weekly_thursday: "Thursdays", weekly_friday: "Fridays", weekly_saturday: "Saturdays", weekly_sunday: "Sundays"
+};
+
+// ---------- State ----------
+let emailSubject = "";
+let emailBody = "";
+
+// ---------- Helpers ----------
+function setStatus(text, isError) {
+  const el = document.getElementById("status");
+  el.textContent = text;
+  el.className = isError ? "error" : "";
+}
+
+// Browser-local date, because the Netlify server runs in UTC
+function localTodayIso() {
+  const d = new Date();
+  const pad = (n) => String(n).padStart(2, "0");
+  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
+}
+
+// "YYYY-MM-DDTHH:MM" -> local Date (never via Date.parse, which may treat it as UTC)
+function localDateFrom(value) {
+  const m = /^(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2})/.exec(value || "");
+  if (!m) return null;
+  return new Date(+m[1], +m[2] - 1, +m[3], +m[4], +m[5]);
+}
+
+function escapeHtml(s) {
+  return String(s ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
+}
+
+// Office.js body read wrapped as a promise
+function readBody(item) {
+  return new Promise((resolve, reject) => {
+    item.body.getAsync(Office.CoercionType.Text, (res) => {
+      if (res.status === Office.AsyncResultStatus.Succeeded) resolve(res.value || "");
+      else reject(res.error);
+    });
+  });
+}
+
+// ---------- Step 1: read the open email ----------
+Office.onReady(async () => {
+  const btn = document.getElementById("findBtn");
+  try {
+    const item = Office.context.mailbox.item;
+    emailSubject = item.subject || "";
+    emailBody = await readBody(item);
+    btn.disabled = false;
+    btn.addEventListener("click", findEvents);
+  } catch (err) {
+    setStatus("Couldn't read this email. Open a message and try again.", true);
+  }
+});
+
+// ---------- Step 2: ask Parley (via the Netlify function) for events ----------
+async function findEvents() {
+  const btn = document.getElementById("findBtn");
+  const list = document.getElementById("events");
+  btn.disabled = true;
+  list.innerHTML = "";
+  setStatus("Reading the email for events…");
+
+  try {
+    const resp = await fetch(FUNCTION_URL, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ subject: emailSubject, body: emailBody, today: localTodayIso() })
+    });
+    const data = await resp.json();
+    if (!resp.ok) throw new Error(data.error || `Server returned ${resp.status}`);
+
+    if (!data.events.length) {
+      setStatus("No calendar events found in this email.");
+    } else {
+      setStatus(data.events.length === 1 ? "1 event found." : `${data.events.length} events found.`);
+      data.events.forEach((ev, i) => list.appendChild(renderEvent(ev, i)));
+    }
+  } catch (err) {
+    setStatus(`Event search failed: ${err.message}`, true);
+  } finally {
+    btn.disabled = false;
+  }
+}
+
+// ---------- Step 3: render each event as an editable block ----------
+function renderEvent(ev, index) {
+  const wrap = document.createElement("section");
+  wrap.className = "event";
+
+  const flags = [];
+  if (!ev.weekday_ok && ev.weekday_note) flags.push(`Check the date: ${ev.weekday_note}.`);
+  if (ev.recurring && ev.recurring !== "no") flags.push(`Repeats on ${RECUR_LABELS[ev.recurring] || ev.recurring}. Set Repeat in the form before saving.`);
+  if (ev.all_day) flags.push("All-day event. Switch on All day in the form.");
+  if (ev.confidence === "low" || ev.ambiguity) flags.push(ev.ambiguity || "Low confidence. Check the details.");
+
+  wrap.innerHTML = `
+    <h2>${escapeHtml(ev.summary || "Untitled event")}</h2>
+    <label for="t${index}">Title</label>
+    <input type="text" id="t${index}" value="${escapeHtml(ev.summary)}">
+    <div class="pair">
+      <div><label for="s${index}">Start</label><input type="datetime-local" id="s${index}" value="${escapeHtml((ev.start || "").slice(0, 16))}"></div>
+      <div><label for="e${index}">End</label><input type="datetime-local" id="e${index}" value="${escapeHtml((ev.end || "").slice(0, 16))}"></div>
+    </div>
+    <label for="l${index}">Location</label>
+    <input type="text" id="l${index}" value="${escapeHtml(ev.location)}">
+    <label for="d${index}">Notes</label>
+    <textarea id="d${index}">${escapeHtml(ev.description)}</textarea>
+    ${flags.map((f) => `<p class="flag">${escapeHtml(f)}</p>`).join("")}
+    <div class="actions"><button id="o${index}">Open as calendar entry</button></div>
+  `;
+
+  wrap.querySelector(`#o${index}`).addEventListener("click", () => openAppointment(index));
+  return wrap;
+}
+
+// ---------- Step 4: open a prefilled appointment form (user saves it) ----------
+function openAppointment(index) {
+  const start = localDateFrom(document.getElementById(`s${index}`).value);
+  let end = localDateFrom(document.getElementById(`e${index}`).value);
+  if (!start) { setStatus("Enter a valid start time before opening the entry.", true); return; }
+  if (!end || end <= start) end = new Date(start.getTime() + 60 * 60 * 1000);
+
+  let notes = document.getElementById(`d${index}`).value;
+  if (document.getElementById("includeOriginal").checked) {
+    notes += "\n\n--- Original Email ---\n" + emailBody;
+  }
+
+  try {
+    Office.context.mailbox.displayNewAppointmentForm({
+      subject: document.getElementById(`t${index}`).value,
+      location: document.getElementById(`l${index}`).value,
+      start: start,
+      end: end,
+      body: notes.slice(0, MAX_FORM_BODY),
+      requiredAttendees: []
+    });
+    setStatus("Entry opened. Review and save it in the form.");
+  } catch (err) {
+    setStatus(`Couldn't open the calendar form: ${err.message}`, true);
+  }
+}
+</script>
+</body>
+</html>
