@@ -1,4 +1,4 @@
-// parley-calendar-extract.js  (v1.0, 2026-09-23)
+// parley-calendar-extract.js  (v1.2, 2026-09-23 - own key: PARLEY_CALENDAR_API_KEY)
 // Netlify function: port of the VBA CreateCalendarFromEmail / CallParleyAPIforCal pair.
 // Location in repo: same functions folder as parley-waiver-check.js
 //
@@ -40,15 +40,22 @@ function buildDateFacts(todayIso) {
   return lines.join("\n");
 }
 
-// Weekday check done in code, never trusted from the model
-function checkWeekday(startLocal, claimedWeekday) {
+// Weekday check done in code, never trusted from the model.
+// Two separate checks:
+//   emailWeekday   - what the email says (catches sender typos like "Thursday, Oct 7")
+//   claimedWeekday - what the model says (catches model calendar-arithmetic errors)
+function checkWeekday(startLocal, claimedWeekday, emailWeekday) {
   const datePart = (startLocal || "").slice(0, 10);
   const d = parseIsoDate(datePart);
   if (!d) return { ok: false, actual: null, note: "Start date could not be read" };
   const actual = WEEKDAYS[d.getUTCDay()];
+  const fromEmail = (emailWeekday || "").trim();
   const claimed = (claimedWeekday || "").trim();
+  if (fromEmail && !actual.toLowerCase().startsWith(fromEmail.toLowerCase().slice(0, 3))) {
+    return { ok: false, actual, note: `The email says ${fromEmail}, but ${datePart} is a ${actual}` };
+  }
   if (claimed && claimed.toLowerCase() !== actual.toLowerCase()) {
-    return { ok: false, actual, note: `Email logic implied ${claimed}, but ${datePart} is a ${actual}` };
+    return { ok: false, actual, note: `Parley implied ${claimed}, but ${datePart} is a ${actual}` };
   }
   return { ok: true, actual, note: "" };
 }
@@ -69,6 +76,7 @@ function buildPrompt(subject, body, todayIso) {
     '  "end": "YYYY-MM-DDTHH:MM (24-hour); if no end is given, start + 1 hour",',
     '  "all_day": false,',
     '  "weekday": "weekday name of the start date, copied from the table above",',
+    '  "email_weekday": "the weekday the email itself states for this event, exactly as written, or empty string if the email names none",',
     '  "location": "location or empty string",',
     '  "description": "one-sentence description",',
     '  "recurring": "no | weekly_monday | weekly_tuesday | weekly_wednesday | weekly_thursday | weekly_friday | weekly_saturday | weekly_sunday",',
@@ -114,8 +122,10 @@ exports.handler = async (event) => {
   // Step 1: validate request
   if (event.httpMethod !== "POST") return jsonResponse(405, { error: "Use POST" });
 
-  const apiKey = process.env.PARLEY_API_KEY;
-  if (!apiKey) return jsonResponse(500, { error: "PARLEY_API_KEY is not set in Netlify environment variables" });
+  // Calendar uses its own key so its Parley usage is tracked separately from the research tools.
+  // No fallback to PARLEY_API_KEY on purpose: a silent fallback would mix the usage again.
+  const apiKey = process.env.PARLEY_CALENDAR_API_KEY;
+  if (!apiKey) return jsonResponse(500, { error: "PARLEY_CALENDAR_API_KEY is not set in Netlify environment variables" });
 
   let input;
   try {
@@ -158,7 +168,7 @@ exports.handler = async (event) => {
   }
 
   const events = (Array.isArray(parsed.events) ? parsed.events : []).map((ev) => {
-    const weekdayCheck = checkWeekday(ev.start, ev.weekday);
+    const weekdayCheck = checkWeekday(ev.start, ev.weekday, ev.email_weekday);
     return { ...ev, weekday_actual: weekdayCheck.actual, weekday_ok: weekdayCheck.ok, weekday_note: weekdayCheck.note };
   });
 
