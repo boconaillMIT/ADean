@@ -1,4 +1,4 @@
-// parley-calendar-extract.js  (v1.2, 2026-09-23 - own key: PARLEY_CALENDAR_API_KEY)
+// parley-calendar-extract.js  (v1.3, 2026-09-23 - dates beyond table no longer flagged)
 // Netlify function: port of the VBA CreateCalendarFromEmail / CallParleyAPIforCal pair.
 // Location in repo: same functions folder as parley-waiver-check.js
 //
@@ -85,6 +85,7 @@ function buildPrompt(subject, body, todayIso) {
     "} ] }",
     "",
     "Rules:",
+    "- The date table covers only the next " + DATE_FACT_DAYS + " days. For an explicit date beyond it, use the date as written and leave \"weekday\" empty; weekdays are verified in code afterward, so do not mention the table in \"ambiguity\".",
     "- For recurring events with no specific start date, use the NEXT occurrence from today.",
     "- If an event recurs on multiple days of the week (e.g. 'Wed and Thu 11-1'), output SEPARATE events for each day.",
     "- For events with GPS/navigation hints, use the human-readable place name, and append the GPS address in parentheses.",
