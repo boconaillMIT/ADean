@@ -1,149 +1,460 @@
-// netlify/functions/parley-waiver-check.js
-//
-// Proxy between the Outlook add-in and MIT Parley.
-// Classifies request type(s) and runs the matching checklist(s):
-//   - "waiver"       : Proposal Waiver Request (7 presence checks)
-//   - "one_time_pi"  : One-time PI/Co-PI status request (14 packet elements + facts)
-// An email may contain one or both. PARLEY_API_KEY stays server-side.
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>SoE Request Pre-Check</title>
+  <script src="https://appsforoffice.microsoft.com/lib/1/hosted/office.js"></script>
+  <style>
+    :root {
+      --fg:#1a1a1a; --muted:#666; --ok:#137a3f; --bad:#b3261e; --warn:#8a6d00;
+      --bg:#fff; --line:#e0e0e0; --btn:#0f6cbd; --btnfg:#fff; --panel:#f5f7fa;
+    }
+    @media (prefers-color-scheme: dark) {
+      :root { --fg:#eee; --muted:#aaa; --ok:#4ac97e; --bad:#f2857c; --warn:#e8c65b;
+              --bg:#1f1f1f; --line:#3a3a3a; --panel:#2a2a2a; }
+    }
+    body { font-family:"Segoe UI",system-ui,sans-serif; color:var(--fg); background:var(--bg);
+           margin:0; padding:14px; font-size:14px; }
+    h1 { font-size:15px; margin:0 0 10px; }
+    h2 { font-size:14px; margin:16px 0 6px; }
+    button { background:var(--btn); color:var(--btnfg); border:0; border-radius:4px;
+             padding:8px 12px; font-size:14px; cursor:pointer; margin:4px 4px 4px 0; }
+    button.secondary { background:transparent; color:var(--btn); border:1px solid var(--btn); }
+    button:disabled { opacity:.5; cursor:default; }
+    summary { cursor:pointer; color:var(--muted); font-size:13px; }
+    textarea, input.cc { width:100%; box-sizing:border-box; margin-top:6px; font-family:inherit; font-size:13px;
+               padding:6px; border:1px solid var(--line); border-radius:4px; background:var(--bg); color:var(--fg); }
+    #status { color:var(--muted); margin:10px 0; min-height:1.2em; }
+    .verdict { font-weight:600; padding:8px 10px; border-radius:4px; margin:8px 0; }
+    .verdict.ok  { background:rgba(19,122,63,.12); color:var(--ok); }
+    .verdict.bad { background:rgba(179,38,30,.12); color:var(--bad); }
+    .typebanner { font-size:13px; padding:8px 10px; border-radius:4px; margin:8px 0; }
+    .typebanner.std  { background:var(--panel); color:var(--muted); }
+    .typebanner.spec { background:rgba(138,109,0,.14); color:var(--warn); font-weight:600; }
+    ul.fields { list-style:none; padding:0; margin:8px 0; }
+    ul.fields li { padding:6px 0; border-bottom:1px solid var(--line); }
+    ul.fields li.ok .mark { color:var(--ok); }
+    ul.fields li.bad .mark { color:var(--bad); }
+    ul.fields li.opt .mark { color:var(--muted); }
+    .mark { font-weight:700; margin-right:8px; }
+    .note { color:var(--muted); }
+    .flag { font-size:12px; margin-top:6px; }
+    .flag.bad { color:var(--bad); } .flag.ok { color:var(--ok); } .flag.warn { color:var(--warn); }
+    .facts { background:var(--panel); border:1px solid var(--line); border-radius:4px; padding:8px 10px; margin:8px 0; font-size:13px; }
+    .facts b { font-weight:600; }
+    .reminder { font-size:12px; color:var(--muted); margin:8px 0; }
+    .section-label { font-weight:600; margin:14px 0 4px; }
+    .caution { color:var(--warn); font-size:12px; margin:6px 0; }
+    .ca-status { font-size:12px; margin:6px 0; padding:6px 8px; border-radius:4px; }
+    .ca-status.ok  { background:rgba(19,122,63,.10); color:var(--ok); }
+    .ca-status.bad { background:rgba(179,38,30,.10); color:var(--bad); }
+    .preview { background:var(--panel); border:1px solid var(--line); border-radius:4px;
+               padding:10px; margin:8px 0; max-height:300px; overflow:auto; font-size:13px; }
+    .preview a { color:var(--btn); word-break:break-all; }
+    hr { border:0; border-top:1px solid var(--line); margin:14px 0; }
+  </style>
+</head>
+<body>
+  <h1>SoE Request Pre-Check</h1>
+  <details id="pasteBox">
+    <summary>Paste PDF / extra text (optional)</summary>
+    <textarea id="pastedText" rows="6" placeholder="Paste the PDF text or any extra request content here. It will be included in the check."></textarea>
+  </details>
+  <div style="margin-top:8px;">
+    <button id="checkBtn" disabled>Check this request</button>
+  </div>
+  <div id="status">Loading...</div>
+  <div id="results"></div>
+  <div id="draftArea"></div>
 
-const PARLEY_URL = "https://parley.api.mit.edu/v1/chat/completions";
-const MODEL = "bedrock/claude-sonnet-4-6";
+  <script>
+    var FUNCTION_URL = "/.netlify/functions/parley-waiver-check";
+    var PLATA_EMAIL = "dplata@mit.edu";
+    var FIXED_RAS_CC = ["mcorcor@mit.edu", "vholmes@mit.edu", "laureena@mit.edu"];
 
-const RUBRIC = `You are a pre-check assistant for MIT School of Engineering (SoE) research-administration submissions. Two kinds of request can arrive, sometimes both in the same email:
-  A) "waiver" - a Proposal Waiver Request (to submit a proposal after the RAS 5-business-day review deadline).
-  B) "one_time_pi" - a request for one-time PI/Co-PI status for someone who does not have automatic PI status.
+    var WAIVER_LABELS = {
+      principal_investigator:"PI name", project_title:"Project title", sponsor_name:"Sponsor",
+      dlc:"DLC", due_date:"Due date", ras_contact:"RAS contact", late_reason:"Reason late"
+    };
+    var OTPI_LABELS = {
+      researcher_name:"Researcher's name", endorsement:"Dept/Lab Head endorsement",
+      reason_needed:"Reason PI status needed", career_trajectory:"Career trajectory",
+      mentoring_plan:"Mentoring plan", prior_history:"Prior PI-status history",
+      proposal_title:"Proposal title", sponsor:"Sponsor", budget:"Budget (effort & scope)",
+      salary_support:"Salary support level", due_date:"Proposal due date",
+      abstract:"One-page abstract (optional)", oversight_individual:"Oversight individual",
+      research_landscape:"Research landscape comment",
+      visiting_appointment:"Visiting appointment confirmation",
+      work_authorization:"Work authorization confirmation",
+      emeritus_confirmation:"Emeritus status confirmation"
+    };
+    // Required elements per requester type. Abstract is optional for standard (shown, never required).
+    var OTPI_REQUIRED = {
+      standard: ["researcher_name","endorsement","reason_needed","career_trajectory","mentoring_plan","prior_history","proposal_title","sponsor","budget","salary_support","due_date","oversight_individual","research_landscape"],
+      incoming_faculty: ["researcher_name","proposal_title","sponsor","due_date","visiting_appointment","work_authorization"],
+      emeritus: ["researcher_name","proposal_title","sponsor","due_date","emeritus_confirmation"]
+    };
+    var OTPI_TYPE_LABEL = {
+      standard: "Standard (developing researcher)",
+      incoming_faculty: "Incoming faculty (visiting appointment + work authorization)",
+      emeritus: "Emeritus / post-retirement"
+    };
 
-Your job: (1) identify which request type(s) the email contains, and (2) for each type present, check whether required elements are present and extract a few specific facts. You do NOT approve, deny, or judge the merits of anything. You do NOT decide whether any value is acceptable - only report what is stated.
+    var CA_LIST = [
+      {name:"Courtney Bensey", last:"Bensey", email:"cbensey@mit.edu"},
+      {name:"Michael P. Corcoran", last:"Corcoran", email:"mcorcor@mit.edu"},
+      {name:"Elizabeth Fong", last:"Fong", email:"efong@mit.edu"},
+      {name:"Helen Fowowe", last:"Fowowe", email:"hfowowe@mit.edu"},
+      {name:"Michelle Gittens", last:"Gittens", email:"gittensm@mit.edu"},
+      {name:"Jamie Goldberg", last:"Goldberg", email:"jrgold@mit.edu"},
+      {name:"Meredith Hanna", last:"Hanna", email:"mbhanna@mit.edu"},
+      {name:"Laureen Horton", last:"Horton", email:"laureena@mit.edu"},
+      {name:"Melissa Klumpar", last:"Klumpar", email:"mklumpar@mit.edu"},
+      {name:"Meghan Lee", last:"Lee", email:"meghanl@mit.edu"},
+      {name:"Maria Lemonopoulos", last:"Lemonopoulos", email:"mlemon@mit.edu"},
+      {name:"Marissa Mallinson", last:"Mallinson", email:"mclarkso@mit.edu"},
+      {name:"Katrina McCarty", last:"McCarty", email:"mccartyk@mit.edu"},
+      {name:"Katie McGeary", last:"McGeary", email:"kmcgeary@mit.edu"},
+      {name:"Mary A. McGonagle", last:"McGonagle", email:"mam@mit.edu"},
+      {name:"Alisa Onyuksel", last:"Onyuksel", email:"alisac@mit.edu"},
+      {name:"Kyle Shedden", last:"Shedden", email:"kshedden@mit.edu"},
+      {name:"Ruth Smith", last:"Smith", email:"rsmith27@mit.edu"},
+      {name:"Stacey Sullaway", last:"Sullaway", email:"sullaway@mit.edu"},
+      {name:"Louise Tanguay-Ricker", last:"Tanguay-Ricker", email:"ltanguay@mit.edu"},
+      {name:"Bernadette Vallely", last:"Vallely", email:"bvallely@mit.edu"}
+    ];
 
-First decide request_types: an array containing "waiver", "one_time_pi", or both.
+    var APPROVAL_BODY_HTML =
+      "Hi,<br><br>" +
+      "The Dean is able to grant a waiver on the proposal identified below; however, RAS cannot guarantee the timely submission of proposals received less than five days before the deadline. The proposal that is submitted to RAS must be the final and complete copy to be sent to the sponsor. Please note: the SoE policy is to grant only a single waiver per proposal, and we are unable to grant exceptions.<br><br>" +
+      "The school's policy can be found at:<br>" +
+      "<a href=\"https://soe.mit.edu/administrative-offices/administrative-officers-policies-forms-and-resources/\">https://soe.mit.edu/administrative-offices/administrative-officers-policies-forms-and-resources/</a><br><br>" +
+      "Please understand that RAS needs to have five business days to adequately review proposals to protect MIT's concerns about publication restrictions, ownership of Intellectual Property, Foreign National restrictions etc. If RAS does not have adequate time to conduct these reviews, it will not be able to address the issues usually required for a complete proposal submission i.e., any exceptions to the terms and conditions at time of proposal. If the proposal is selected for funding, the negotiation could be more challenging because the sponsors will not have heard about MIT's exceptions at the time of proposal as is typically the requirement.<br><br>" +
+      "We appreciate your cooperation and understanding.<br><br>Best,";
 
-IMPORTANT about the RAS contact: "RAS" means MIT Research Administration Services - the central office whose Contract Administrator will REVIEW the proposal. The RAS contact is that RAS-side reviewer. It is NOT the person sending or preparing the request, and NOT the DLC's own departmental research administrator, even if that person's title contains words like "Research Administration". Do not infer the RAS contact from a job title in the sender's signature. Only report a RAS contact if the submitter actually names the RAS-side reviewer; capture that name in ras_contact.value. If only the DLC preparer/sender is present, ras_contact is absent.
+    var lastResult = null;
 
-For a WAIVER, check these 7 required items (presence only):
-  principal_investigator, project_title, sponsor_name, dlc, due_date (present AND a plausible calendar date), ras_contact (per the note above), late_reason (ANY stated reason counts; do NOT judge quality).
-
-For ONE_TIME_PI, check these required packet elements (presence only). ALL are required EXCEPT abstract, which is optional and must NEVER affect completeness:
-  researcher_name, endorsement, reason_needed, career_trajectory, mentoring_plan (present or absent only), prior_history (states number of previous PI-status requests and how many awarded), proposal_title, sponsor, budget (shows proposed effort and scope), salary_support, due_date, abstract (OPTIONAL), oversight_individual (faculty/SRS/PRS), research_landscape.
-
-Also extract these ONE_TIME_PI facts (report what is stated; null/empty if not stated - NEVER guess):
-  proposed_pi, dlc, sponsor, working_with_pi, proposal_period, salary_support, effort_percent (NUMBER or null), prior_requests (NUMBER or null), prior_awarded (NUMBER or null).
-
-Return ONLY valid JSON, no preamble:
-{
-  "request_types": ["waiver" and/or "one_time_pi"],
-  "waiver": null OR {
-    "items": {
-      "principal_investigator": {"present": true, "note": ""},
-      "project_title": {"present": true, "note": ""},
-      "sponsor_name": {"present": true, "note": ""},
-      "dlc": {"present": true, "note": ""},
-      "due_date": {"present": true, "value_found": "", "note": ""},
-      "ras_contact": {"present": true, "value": "", "note": ""},
-      "late_reason": {"present": true, "bad_faith": false, "note": ""}
-    },
-    "all_required_present": true,
-    "overall": "complete",
-    "missing_summary": ""
-  },
-  "one_time_pi": null OR {
-    "items": {
-      "researcher_name": {"present": true, "note": ""},
-      "endorsement": {"present": true, "note": ""},
-      "reason_needed": {"present": true, "note": ""},
-      "career_trajectory": {"present": true, "note": ""},
-      "mentoring_plan": {"present": true, "note": ""},
-      "prior_history": {"present": true, "note": ""},
-      "proposal_title": {"present": true, "note": ""},
-      "sponsor": {"present": true, "note": ""},
-      "budget": {"present": true, "note": ""},
-      "salary_support": {"present": true, "note": ""},
-      "due_date": {"present": true, "note": ""},
-      "abstract": {"present": false, "note": ""},
-      "oversight_individual": {"present": true, "note": ""},
-      "research_landscape": {"present": true, "note": ""}
-    },
-    "facts": {
-      "proposed_pi": "", "dlc": "", "sponsor": "", "working_with_pi": "",
-      "proposal_period": "", "salary_support": "",
-      "effort_percent": null, "prior_requests": null, "prior_awarded": null
-    },
-    "all_required_present": true,
-    "overall": "complete",
-    "missing_summary": ""
-  }
-}
-
-Rules:
-- If a request type is not present, set its whole value to null.
-- ras_contact.value = the RAS-side reviewer's name if the submitter named one, else empty string.
-- one_time_pi.all_required_present = every required element present; abstract does NOT count.
-- Presence only. Do NOT judge merits. Do NOT compute effort caps; just report effort_percent as a number if stated.
-- NEVER invent a name, number, or fact. Use null/empty when not stated.
-- No commentary, reasoning, or explanation of any kind outside the JSON. Do NOT think out loud. Your entire response must start with { and end with } and contain nothing else.
-
-Submission:
-Subject: {{subject}}
-Body:
-{{body}}`;
-
-exports.handler = async (event) => {
-  const cors = {
-    "Access-Control-Allow-Origin": "*",
-    "Access-Control-Allow-Headers": "Content-Type",
-    "Access-Control-Allow-Methods": "POST, OPTIONS",
-  };
-
-  if (event.httpMethod === "OPTIONS") return { statusCode: 204, headers: cors, body: "" };
-  if (event.httpMethod !== "POST") return { statusCode: 405, headers: cors, body: JSON.stringify({ error: "Use POST" }) };
-
-  const apiKey = process.env.PARLEY_API_KEY;
-  if (!apiKey) {
-    return { statusCode: 500, headers: cors, body: JSON.stringify({ error: "PARLEY_API_KEY is not set in the Netlify environment." }) };
-  }
-
-  let subject = "", body = "";
-  try {
-    const input = JSON.parse(event.body || "{}");
-    subject = input.subject || "";
-    body = input.body || "";
-  } catch {
-    return { statusCode: 400, headers: cors, body: JSON.stringify({ error: "Invalid JSON body" }) };
-  }
-
-  const prompt = RUBRIC.replace("{{subject}}", subject).replace("{{body}}", body);
-
-  try {
-    const resp = await fetch(PARLEY_URL, {
-      method: "POST",
-      headers: { "Content-Type": "application/json", Authorization: "Bearer " + apiKey },
-      body: JSON.stringify({ model: MODEL, max_tokens: 2500, temperature: 0, messages: [{ role: "user", content: prompt }] }),
+    Office.onReady(function () {
+      var btn = document.getElementById("checkBtn");
+      btn.disabled = false;
+      btn.addEventListener("click", runCheck);
+      setStatus("Ready. Open a request (or paste the PDF text above) and press the button.");
     });
 
-    const text = await resp.text();
-    if (!resp.ok) {
-      return { statusCode: 502, headers: cors, body: JSON.stringify({ error: "Parley returned an error", status: resp.status, detail: text }) };
+    function runCheck() {
+      document.getElementById("draftArea").innerHTML = "";
+      var item = Office.context.mailbox.item;
+      var subject = item.subject || "";
+      var pastedEl = document.getElementById("pastedText");
+      var pasted = pastedEl ? (pastedEl.value || "") : "";
+      setStatus("Reading email...");
+      item.body.getAsync(Office.CoercionType.Text, function (res) {
+        if (res.status !== Office.AsyncResultStatus.Succeeded) {
+          setStatus("Could not read the email body: " + res.error.message); return;
+        }
+        var body = res.value || "";
+        if (pasted.trim()) body += "\n\n----- PASTED ATTACHMENT / ADDITIONAL TEXT -----\n" + pasted;
+        setStatus("Checking via Parley...");
+        fetch(FUNCTION_URL, {
+          method:"POST", headers:{ "Content-Type":"application/json" },
+          body: JSON.stringify({ subject: subject, body: body })
+        })
+        .then(function (r) { return r.json().then(function (d) { return { ok:r.ok, d:d }; }); })
+        .then(function (x) {
+          if (!x.ok) { setStatus("Error: " + (x.d.error || "request failed") + (x.d.detail ? " - " + x.d.detail : "")); return; }
+          lastResult = x.d.result; render(x.d);
+        })
+        .catch(function (e) { setStatus("Request failed: " + e); });
+      });
     }
 
-    const data = JSON.parse(text);
-    let content = (data && data.choices && data.choices[0] && data.choices[0].message && data.choices[0].message.content) || "";
-    content = content.replace(/```json/gi, "").replace(/```/g, "").trim();
+    function setStatus(msg) { document.getElementById("status").textContent = msg; }
 
-    // Robustness: if the model wrapped the JSON in commentary, extract the object itself.
-    const firstBrace = content.indexOf("{");
-    const lastBrace = content.lastIndexOf("}");
-    if (firstBrace !== -1 && lastBrace !== -1 && lastBrace > firstBrace) {
-      content = content.slice(firstBrace, lastBrace + 1);
+    function render(data) {
+      setStatus("");
+      var out = document.getElementById("results");
+      if (!data.result) {
+        out.innerHTML = "<div class='verdict bad'>Could not parse a structured result</div><pre>" +
+          escapeHtml(data.raw || "(no content)") + "</pre>";
+        return;
+      }
+      var r = data.result, html = "";
+      if (r.waiver) html += renderWaiver(r.waiver);
+      if (r.one_time_pi) html += renderOtpi(r.one_time_pi);
+      if (!r.waiver && !r.one_time_pi) {
+        html += "<div class='verdict bad'>No waiver or one-time-PI request identified. If the details are in an attached PDF, paste its text above and run again.</div>";
+      }
+      out.innerHTML = html;
+
+      var btns = "";
+      if (r.waiver) {
+        btns += "<button id='wApprove'>Waiver: approval reply-all</button>" +
+                "<button id='wMissing' class='secondary'>Waiver: missing-info reply</button>";
+      }
+      if (r.one_time_pi) {
+        btns += "<button id='oReturn' class='secondary'>One-time PI: return for revision</button>" +
+                "<button id='oPlata'>One-time PI: recommend to Prof. Plata</button>";
+      }
+      var draft = document.getElementById("draftArea");
+      draft.innerHTML = btns ? ("<hr><div class='section-label'>Draft a reply</div>" + btns + "<div id='previewWrap'></div>") : "";
+      if (r.waiver) {
+        document.getElementById("wApprove").addEventListener("click", draftWaiverApproval);
+        document.getElementById("wMissing").addEventListener("click", draftWaiverMissing);
+      }
+      if (r.one_time_pi) {
+        document.getElementById("oReturn").addEventListener("click", draftOtpiReturn);
+        document.getElementById("oPlata").addEventListener("click", draftOtpiPlata);
+      }
     }
 
-    let parsed = null;
-    try { parsed = JSON.parse(content); } catch { /* raw returned for inspection */ }
+    function fieldListFromKeys(keys, items, optionalKeys) {
+      return "<ul class='fields'>" + keys.map(function (k) {
+        var it = items[k] || { present:false }, isOpt = optionalKeys.indexOf(k) >= 0, cls, mark;
+        if (it.present) { cls="ok"; mark="\u2713"; }
+        else if (isOpt) { cls="opt"; mark="\u2013"; }
+        else { cls="bad"; mark="\u2717"; }
+        var note = it.note ? " <span class='note'>- " + escapeHtml(it.note) + "</span>" : "";
+        return "<li class='" + cls + "'><span class='mark'>" + mark + "</span>" + (OTPI_LABELS[k]||WAIVER_LABELS[k]||k) + note + "</li>";
+      }).join("") + "</ul>";
+    }
 
-    return {
-      statusCode: 200,
-      headers: { ...cors, "Content-Type": "application/json" },
-      body: JSON.stringify({ result: parsed, raw: content }),
-    };
-  } catch (e) {
-    return { statusCode: 500, headers: cors, body: JSON.stringify({ error: String(e) }) };
-  }
-};
+    function renderWaiver(w) {
+      var items = w.items || {};
+      var keys = Object.keys(WAIVER_LABELS);
+      var v = (w.overall === "complete")
+        ? "<div class='verdict ok'>Complete - all required fields present</div>"
+        : "<div class='verdict bad'>Incomplete - " + escapeHtml(w.missing_summary || "missing fields") + "</div>";
+      var flag = (items.late_reason && items.late_reason.bad_faith)
+        ? "<div class='flag bad'>\u26A0 Reason appears to dismiss the process - flag for a human.</div>" : "";
+      return "<h2>Proposal Waiver Request</h2>" + v + fieldListFromKeys(keys, items, []) + flag;
+    }
+
+    // ---- one-time PI (requester-type aware) ----
+    function otpiType(o) {
+      var t = o.requester_type;
+      return (t === "incoming_faculty" || t === "emeritus") ? t : "standard";
+    }
+    function otpiMissing(o) {
+      var type = otpiType(o), req = OTPI_REQUIRED[type], items = o.items || {};
+      return req.filter(function (k) { return !(items[k] && items[k].present); });
+    }
+
+    function renderOtpi(o) {
+      var type = otpiType(o), req = OTPI_REQUIRED[type], items = o.items || {}, f = o.facts || {};
+      var missing = otpiMissing(o), complete = missing.length === 0;
+
+      var basis = o.requester_type_basis ? escapeHtml(o.requester_type_basis) : "";
+      var banner = (type === "standard")
+        ? "<div class='typebanner std'>Requester type: " + OTPI_TYPE_LABEL.standard + (basis ? " - " + basis : "") + "</div>"
+        : "<div class='typebanner spec'>\u26A0 Inferred requester type: " + OTPI_TYPE_LABEL[type] +
+          (basis ? " - " + basis : "") + ". This applies a lighter checklist and waives the standard development-plan requirements. Confirm the type is correct before relying on the result.</div>";
+
+      var v = complete
+        ? "<div class='verdict ok'>Complete - all required elements present</div>"
+        : "<div class='verdict bad'>Incomplete - missing: " +
+          missing.map(function (k) { return escapeHtml(OTPI_LABELS[k] || k); }).join(", ") + "</div>";
+
+      var displayKeys = req.slice();
+      var optionalKeys = [];
+      if (type === "standard") { displayKeys.push("abstract"); optionalKeys = ["abstract"]; }
+      var fieldList = fieldListFromKeys(displayKeys, items, optionalKeys);
+
+      // deterministic checks
+      var checks = "";
+      if (type === "standard") {
+        if (typeof f.effort_percent === "number") {
+          checks += (f.effort_percent > 25)
+            ? "<div class='flag bad'>\u26A0 Proposed effort " + f.effort_percent + "% exceeds the 25% cap.</div>"
+            : "<div class='flag ok'>Proposed effort " + f.effort_percent + "% (within the 25% cap).</div>";
+        } else {
+          checks += "<div class='flag warn'>Effort % not stated - confirm in the budget.</div>";
+        }
+      }
+      if (type === "incoming_faculty") checks += nineMonthFlag(f);
+
+      var factRows = [];
+      function fr(l, val){ if(val!==null&&val!==undefined&&String(val)!=="") factRows.push("<b>"+l+":</b> "+escapeHtml(String(val))); }
+      fr("Proposed PI", f.proposed_pi); fr("DLC", f.dlc); fr("Sponsor", f.sponsor);
+      fr("Working with", f.working_with_pi); fr("Proposal period", f.proposal_period); fr("Salary support", f.salary_support);
+      if (type === "incoming_faculty") { fr("Proposal start", f.proposal_start_date); fr("Faculty start", f.faculty_start_date); }
+      if (typeof f.prior_requests==="number" || typeof f.prior_awarded==="number")
+        fr("Prior requests / awarded", (f.prior_requests==null?"?":f.prior_requests)+" / "+(f.prior_awarded==null?"?":f.prior_awarded));
+      var facts = factRows.length ? ("<div class='facts'>"+factRows.join("<br>")+"</div>") : "";
+
+      var reminder = (type === "standard")
+        ? "<div class='reminder'>Reviewer judgment (not auto-checked): small scope/dollars; not a significant salary source; uniqueness; alignment or criticality to the unit; oversight in place; robust mentorship; postdocs only if the sponsor requires it.</div>"
+        : "";
+
+      return "<h2>One-time PI/Co-PI Status Request</h2>" + banner + v + fieldList + checks + facts + reminder;
+    }
+
+    function parseISO(s) {
+      if (!s || !/^\d{4}-\d{2}-\d{2}$/.test(s)) return null;
+      var d = new Date(s + "T00:00:00"); return isNaN(d.getTime()) ? null : d;
+    }
+    function addMonths(d, n) { return new Date(d.getFullYear(), d.getMonth() + n, d.getDate()); }
+    function nineMonthFlag(f) {
+      var ps = parseISO(f.proposal_start_date), fs = parseISO(f.faculty_start_date);
+      if (!ps || !fs) return "<div class='flag warn'>Couldn't verify the 9-month rule (missing/unclear dates) - check manually.</div>";
+      if (ps > addMonths(fs, 9))
+        return "<div class='flag bad'>\u26A0 Proposal start (" + escapeHtml(f.proposal_start_date) + ") is more than 9 months after the faculty start (" + escapeHtml(f.faculty_start_date) + ") - exceeds the 9-month limit.</div>";
+      return "<div class='flag ok'>Proposal start is within 9 months of the faculty start date.</div>";
+    }
+
+    function slot(val, placeholder) {
+      return (val!==null&&val!==undefined&&String(val).trim()!=="") ? escapeHtml(String(val)) : "<b>["+placeholder+"]</b>";
+    }
+
+    // ---- RAS CA name -> email validation ----
+    function matchCA(nameStr) {
+      if (!nameStr || !nameStr.trim()) return { status:"none" };
+      var hay = nameStr.toLowerCase();
+      var hits = CA_LIST.filter(function (ca) {
+        var pat = ca.last.toLowerCase().replace(/-/g, "[- ]");
+        return new RegExp("\\b" + pat + "\\b").test(hay);
+      });
+      if (hits.length === 1) return { status:"matched", ca:hits[0] };
+      if (hits.length > 1)  return { status:"ambiguous", hits:hits };
+      return { status:"notfound" };
+    }
+
+    // ---- waiver approval (reply-all, native quoting + Outlook signature) ----
+    function draftWaiverApproval() {
+      var items = (lastResult && lastResult.waiver && lastResult.waiver.items) || {};
+      var ras = items.ras_contact || {};
+      var caName = ras.value || "";
+      var caMatch = matchCA(caName);
+
+      var toAdd = [];
+      if (caMatch.status === "matched") toAdd.push(caMatch.ca.email);
+      FIXED_RAS_CC.forEach(function (e) { toAdd.push(e); });
+      var seen = {}, ccList = [];
+      toAdd.forEach(function (e) { if (!seen[e.toLowerCase()]) { seen[e.toLowerCase()] = 1; ccList.push(e); } });
+
+      var caStatus;
+      if (caMatch.status === "matched") {
+        caStatus = "<div class='ca-status ok'>RAS contact matched: " + escapeHtml(caMatch.ca.name) + " (" + caMatch.ca.email + ").</div>";
+      } else if (caMatch.status === "ambiguous") {
+        caStatus = "<div class='ca-status bad'>\u26A0 \"" + escapeHtml(caName) + "\" matches more than one RAS CA (" +
+          caMatch.hits.map(function(h){return escapeHtml(h.name);}).join(", ") + "). Add the correct one to CC manually.</div>";
+      } else if (caMatch.status === "notfound") {
+        caStatus = "<div class='ca-status bad'>\u26A0 Named RAS contact \"" + escapeHtml(caName) +
+          "\" is not on the RAS CA roster. Not added below - verify and add the CA to CC manually.</div>";
+      } else {
+        caStatus = "<div class='ca-status bad'>\u26A0 No RAS contact was named. Add the CA to CC manually.</div>";
+      }
+
+      var wrap = document.getElementById("previewWrap");
+      wrap.innerHTML =
+        caStatus +
+        "<div class='caution'>\u26A0 Send only once the waiver has actually been approved. This checks completeness, not approval, and does not check the one-waiver-per-proposal / 3-per-year limit.</div>" +
+        "<div class='preview'>" + APPROVAL_BODY_HTML + "</div>" +
+        "<div class='section-label'>Add to CC (reply-all already includes everyone on the original):</div>" +
+        "<input class='cc' id='ccField' type='text' readonly value='" + ccList.join("; ") + "' />" +
+        "<button id='copyCcBtn' class='secondary'>Copy CC addresses</button>" +
+        "<button id='openBtn'>Open reply-all</button>";
+
+      document.getElementById("copyCcBtn").addEventListener("click", function () { copyText(ccList.join("; ")); });
+      document.getElementById("openBtn").addEventListener("click", function () { openReplyAll(APPROVAL_BODY_HTML); });
+    }
+
+    function draftWaiverMissing() {
+      var items = (lastResult && lastResult.waiver && lastResult.waiver.items) || {};
+      var missing = Object.keys(items).filter(function (k) { return !items[k].present; })
+        .map(function (k) { return "<li>" + (WAIVER_LABELS[k]||k) + "</li>"; }).join("");
+      if (!missing) missing = "<li>(nothing flagged - check manually)</li>";
+      var html = "Hi,<br><br>Thank you for your proposal waiver request. Before RAS can review it, the following required information appears to be missing:<br><ul>" +
+        missing + "</ul>For reference, a complete waiver request includes the PI name, project title, sponsor, DLC, the actual proposal due date, a RAS contact, and the reason the proposal is late. Please reply with the missing details and we'll proceed.<br><br>Best,";
+      showReplyPreview(html);
+    }
+
+    // ---- one-time PI drafts ----
+    function draftOtpiReturn() {
+      var o = (lastResult && lastResult.one_time_pi) || { items:{} };
+      var missing = otpiMissing(o).map(function (k) { return "<li>" + (OTPI_LABELS[k]||k) + "</li>"; }).join("");
+      if (!missing) missing = "<li>(nothing flagged - check manually)</li>";
+      var html = "Hi,<br><br>Thank you for your one-time PI/Co-PI status request. Before it can go for School review, the following required elements appear to be missing or incomplete:<br><ul>" +
+        missing + "</ul>Please revise and resubmit with these included. Note that School review can take one to two weeks once a complete request is received.<br><br>Best,";
+      showReplyPreview(html);
+    }
+
+    function draftOtpiPlata() {
+      var f = (lastResult && lastResult.one_time_pi && lastResult.one_time_pi.facts) || {};
+      var pi = slot(f.proposed_pi, "proposed PI");
+      var priorLine;
+      if (typeof f.prior_requests === "number" || typeof f.prior_awarded === "number") {
+        priorLine = pi + " has had " + (f.prior_requests==null?"<b>[#]</b>":f.prior_requests) +
+          " prior one-time PI status request(s), " + (f.prior_awarded==null?"<b>[#]</b>":f.prior_awarded) +
+          " of which were approved. <b>[Confirm the fiscal-year breakdown before sending.]</b>";
+      } else {
+        priorLine = "<b>[Fill in: number of prior one-time PI status requests and how many were approved - required packet element B6.]</b>";
+      }
+      var html =
+        "Hi Professor Plata,<br><br>" +
+        slot(f.dlc,"DLC") + " is requesting one-time PI status for " + pi + " for a " + slot(f.sponsor,"sponsor") +
+        " proposal. The request has department approval and would allow " + pi +
+        " to serve as the lead MIT PI on the proposal, working with " + slot(f.working_with_pi,"PI") + ".<br><br>" +
+        "The proposal period is " + slot(f.proposal_period,"period") + " and if awarded, the funding would provide " +
+        slot(f.salary_support,"salary support") + " of salary support each year.<br><br>" +
+        "For context, " + priorLine + "<br><br>" +
+        "I reviewed the submission and recommend it for approval. Please let me know if you agree and/or if you have any further questions.<br><br>Sincerely,";
+      var subj = "One-time PI status recommendation" + (f.proposed_pi ? " - " + f.proposed_pi : "");
+      showNewMessagePreview(html, PLATA_EMAIL, subj);
+    }
+
+    // ---- preview + send helpers ----
+    function showReplyPreview(html) {
+      var wrap = document.getElementById("previewWrap");
+      wrap.innerHTML = "<div class='preview'>" + html + "</div><button id='openBtn'>Open as reply</button>";
+      document.getElementById("openBtn").addEventListener("click", function () { openReply(html); });
+    }
+    function showNewMessagePreview(html, to, subject) {
+      var wrap = document.getElementById("previewWrap");
+      var caution = "<div class='caution'>\u26A0 This opens a NEW email to " + escapeHtml(to) +
+        ". Review every filled-in detail - especially any [bracketed] placeholders - before sending.</div>";
+      wrap.innerHTML = caution + "<div class='preview'>" + html + "</div><button id='openBtn'>Open as new email</button>";
+      document.getElementById("openBtn").addEventListener("click", function () { openNewMessage([to], [], subject, html); });
+    }
+
+    function openReply(html) {
+      try { Office.context.mailbox.item.displayReplyForm(html); }
+      catch (e) { setStatus("Could not open a reply: " + e); }
+    }
+    function openReplyAll(html) {
+      try { Office.context.mailbox.item.displayReplyAllForm(html); }
+      catch (e) { setStatus("Could not open reply-all: " + e); }
+    }
+    function openNewMessage(toArr, ccArr, subject, html) {
+      try {
+        if (typeof Office.context.mailbox.displayNewMessageFormAsync !== "function") {
+          setStatus("This Outlook version can't open a new message from an add-in; copy the draft above instead."); return;
+        }
+        Office.context.mailbox.displayNewMessageFormAsync(
+          { toRecipients: toArr, ccRecipients: ccArr || [], subject: subject, htmlBody: html },
+          function (res) {
+            if (res.status !== Office.AsyncResultStatus.Succeeded) {
+              setStatus("Could not open a new message: " + (res.error ? res.error.message : "unknown") + " - copy the draft above instead.");
+            }
+          }
+        );
+      } catch (e) { setStatus("Could not open a new message: " + e + " - copy the draft above instead."); }
+    }
+
+    function copyText(text) {
+      if (navigator.clipboard && navigator.clipboard.writeText) {
+        navigator.clipboard.writeText(text).then(function () { setStatus("CC addresses copied to clipboard."); })
+          .catch(function () { selectCcField(); });
+      } else { selectCcField(); }
+    }
+    function selectCcField() {
+      var el = document.getElementById("ccField");
+      if (el) { el.focus(); el.select(); setStatus("Select the highlighted addresses and copy (Ctrl+C)."); }
+    }
+
+    function escapeHtml(s) {
+      return String(s).replace(/[&<>]/g, function (c) { return { "&":"&amp;", "<":"&lt;", ">":"&gt;" }[c]; });
+    }
+  </script>
+</body>
+</html>
