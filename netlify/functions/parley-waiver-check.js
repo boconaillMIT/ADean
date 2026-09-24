@@ -27,7 +27,7 @@ For ONE_TIME_PI, FIRST infer requester_type from context (there is NO explicit f
   - "incoming_faculty": the researcher is NOT yet at MIT but has an incoming/visiting faculty appointment and work authorization (cues: "visiting appointment", "not yet at MIT", "will join", "incoming faculty", "starting <date>").
   - "emeritus": a senior faculty member who no longer holds AUTOMATIC PI status - this includes emeritus, retired, post-retirement, AND post-tenure faculty. At MIT the appointment label for such a professor is often "Post-Tenure" (also written "Post Tenure"). Cues: "emeritus", "retired", "post-retirement", "post-tenure", "post tenure", or any indication the person is a current/former tenured or senior professor (e.g. "Prof.", "Professor", a chaired/named professorship) seeking PI status for a specific proposal rather than a junior/developing researcher building a career. When the request is plainly for an established professor and shows no career-development plan, treat it as "emeritus", NOT "standard".
   - "standard": everyone else (a developing researcher seeking PI status for career growth).
-Report requester_type and requester_type_basis (a short phrase naming the cue, or "no special cues; treated as standard").
+requester_type MUST be exactly one of these three literal strings: "standard", "incoming_faculty", or "emeritus". Post-tenure, retired, and post-retirement faculty ALL map to "emeritus" - do NOT invent a "post_tenure" or other value. Report requester_type and requester_type_basis (a short phrase naming the cue, or "no special cues; treated as standard").
 
 Then report presence {present, note} for the elements relevant to the inferred type:
   - standard: researcher_name, endorsement, reason_needed, career_trajectory, mentoring_plan, prior_history, proposal_title, sponsor, budget, salary_support, due_date, abstract (OPTIONAL), oversight_individual, research_landscape.
@@ -43,6 +43,8 @@ Extract these facts (stated only; null/empty if not stated; NEVER guess):
   faculty_start_date (the researcher's official MIT faculty start date, normalized to YYYY-MM-DD if determinable, else ""),
   status_label (for the emeritus/incoming types, the researcher's stated status term such as "post-tenure", "emeritus", "retired", or "incoming faculty"; "" for standard),
   reason_summary (one concise sentence stating why PI status is warranted or the researcher's role/expertise on the project, drawn from the request; "" if not stated).
+  is_postdoc (true if the researcher is described as a postdoc / postdoctoral associate / postdoctoral fellow, otherwise false).
+  call_postdoc_note (if the proposal names a funding mechanism that is specifically a POSTDOCTORAL career-transition / mentored award - e.g. NIH K99/R00, NIH F32 or other F-series, NIH K-series career awards, NSF postdoctoral fellowship - OR the text says the call requires a postdoc, name that mechanism briefly here, e.g. "NIH K99/R00 (postdoc career-transition award)"; otherwise "").
 Normalize dates only; do NOT compute any interval or gap between them - the application does that.
 
 Return ONLY valid JSON, no preamble:
@@ -75,7 +77,7 @@ Return ONLY valid JSON, no preamble:
       "proposal_period": "", "salary_support": "",
       "effort_percent": null, "prior_requests": null, "prior_awarded": null,
       "proposal_start_date": "", "faculty_start_date": "",
-      "status_label": "", "reason_summary": ""
+      "status_label": "", "reason_summary": "", "is_postdoc": false, "call_postdoc_note": ""
     }
   }
 }
