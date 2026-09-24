@@ -29,6 +29,9 @@
     .verdict { font-weight:600; padding:8px 10px; border-radius:4px; margin:8px 0; }
     .verdict.ok  { background:rgba(19,122,63,.12); color:var(--ok); }
     .verdict.bad { background:rgba(179,38,30,.12); color:var(--bad); }
+    .typebanner { font-size:13px; padding:8px 10px; border-radius:4px; margin:8px 0; }
+    .typebanner.std  { background:var(--panel); color:var(--muted); }
+    .typebanner.spec { background:rgba(138,109,0,.14); color:var(--warn); font-weight:600; }
     ul.fields { list-style:none; padding:0; margin:8px 0; }
     ul.fields li { padding:6px 0; border-bottom:1px solid var(--line); }
     ul.fields li.ok .mark { color:var(--ok); }
@@ -61,7 +64,7 @@
   <div style="margin-top:8px;">
     <button id="checkBtn" disabled>Check this request</button>
   </div>
-  <div id="status">Loading&#8230;</div>
+  <div id="status">Loading...</div>
   <div id="results"></div>
   <div id="draftArea"></div>
 
@@ -81,12 +84,23 @@
       proposal_title:"Proposal title", sponsor:"Sponsor", budget:"Budget (effort & scope)",
       salary_support:"Salary support level", due_date:"Proposal due date",
       abstract:"One-page abstract (optional)", oversight_individual:"Oversight individual",
-      research_landscape:"Research landscape comment"
+      research_landscape:"Research landscape comment",
+      visiting_appointment:"Visiting appointment confirmation",
+      work_authorization:"Work authorization confirmation",
+      emeritus_confirmation:"Emeritus status confirmation"
+    };
+    // Required elements per requester type. Abstract is optional for standard (shown, never required).
+    var OTPI_REQUIRED = {
+      standard: ["researcher_name","endorsement","reason_needed","career_trajectory","mentoring_plan","prior_history","proposal_title","sponsor","budget","salary_support","due_date","oversight_individual","research_landscape"],
+      incoming_faculty: ["researcher_name","proposal_title","sponsor","due_date","visiting_appointment","work_authorization"],
+      emeritus: ["researcher_name","proposal_title","sponsor","due_date","emeritus_confirmation"]
+    };
+    var OTPI_TYPE_LABEL = {
+      standard: "Standard (developing researcher)",
+      incoming_faculty: "Incoming faculty (visiting appointment + work authorization)",
+      emeritus: "Emeritus / post-retirement"
     };
 
-    // RAS Contract Administrator roster (name -> email), verified from the RAS staff
-    // directory. Used ONLY to validate the CA the submitter named and supply their
-    // email for CC. The tool never picks a CA from the DLC. Roster last refreshed: 2026-09-22.
     var CA_LIST = [
       {name:"Courtney Bensey", last:"Bensey", email:"cbensey@mit.edu"},
       {name:"Michael P. Corcoran", last:"Corcoran", email:"mcorcor@mit.edu"},
@@ -111,9 +125,6 @@
       {name:"Bernadette Vallely", last:"Vallely", email:"bvallely@mit.edu"}
     ];
 
-    // Waiver approval policy text (EXACT). No signature here on purpose - Outlook's
-    // own signature is appended natively when the reply opens, so the sender signs
-    // as themselves and there's no duplicate.
     var APPROVAL_BODY_HTML =
       "Hi,<br><br>" +
       "The Dean is able to grant a waiver on the proposal identified below; however, RAS cannot guarantee the timely submission of proposals received less than five days before the deadline. The proposal that is submitted to RAS must be the final and complete copy to be sent to the sponsor. Please note: the SoE policy is to grant only a single waiver per proposal, and we are unable to grant exceptions.<br><br>" +
@@ -137,14 +148,14 @@
       var subject = item.subject || "";
       var pastedEl = document.getElementById("pastedText");
       var pasted = pastedEl ? (pastedEl.value || "") : "";
-      setStatus("Reading email&#8230;");
+      setStatus("Reading email...");
       item.body.getAsync(Office.CoercionType.Text, function (res) {
         if (res.status !== Office.AsyncResultStatus.Succeeded) {
           setStatus("Could not read the email body: " + res.error.message); return;
         }
         var body = res.value || "";
         if (pasted.trim()) body += "\n\n----- PASTED ATTACHMENT / ADDITIONAL TEXT -----\n" + pasted;
-        setStatus("Checking via Parley&#8230;");
+        setStatus("Checking via Parley...");
         fetch(FUNCTION_URL, {
           method:"POST", headers:{ "Content-Type":"application/json" },
           body: JSON.stringify({ subject: subject, body: body })
@@ -197,49 +208,98 @@
       }
     }
 
-    function renderFieldList(items, labels, optionalKeys) {
-      return "<ul class='fields'>" + Object.keys(items).map(function (k) {
-        var it = items[k], isOpt = optionalKeys.indexOf(k) >= 0, cls, mark;
+    function fieldListFromKeys(keys, items, optionalKeys) {
+      return "<ul class='fields'>" + keys.map(function (k) {
+        var it = items[k] || { present:false }, isOpt = optionalKeys.indexOf(k) >= 0, cls, mark;
         if (it.present) { cls="ok"; mark="\u2713"; }
         else if (isOpt) { cls="opt"; mark="\u2013"; }
         else { cls="bad"; mark="\u2717"; }
         var note = it.note ? " <span class='note'>- " + escapeHtml(it.note) + "</span>" : "";
-        return "<li class='" + cls + "'><span class='mark'>" + mark + "</span>" + (labels[k]||k) + note + "</li>";
+        return "<li class='" + cls + "'><span class='mark'>" + mark + "</span>" + (OTPI_LABELS[k]||WAIVER_LABELS[k]||k) + note + "</li>";
       }).join("") + "</ul>";
     }
 
     function renderWaiver(w) {
       var items = w.items || {};
+      var keys = Object.keys(WAIVER_LABELS);
       var v = (w.overall === "complete")
         ? "<div class='verdict ok'>Complete - all required fields present</div>"
         : "<div class='verdict bad'>Incomplete - " + escapeHtml(w.missing_summary || "missing fields") + "</div>";
       var flag = (items.late_reason && items.late_reason.bad_faith)
         ? "<div class='flag bad'>\u26A0 Reason appears to dismiss the process - flag for a human.</div>" : "";
-      return "<h2>Proposal Waiver Request</h2>" + v + renderFieldList(items, WAIVER_LABELS, []) + flag;
+      return "<h2>Proposal Waiver Request</h2>" + v + fieldListFromKeys(keys, items, []) + flag;
+    }
+
+    // ---- one-time PI (requester-type aware) ----
+    function otpiType(o) {
+      var t = o.requester_type;
+      return (t === "incoming_faculty" || t === "emeritus") ? t : "standard";
+    }
+    function otpiMissing(o) {
+      var type = otpiType(o), req = OTPI_REQUIRED[type], items = o.items || {};
+      return req.filter(function (k) { return !(items[k] && items[k].present); });
     }
 
     function renderOtpi(o) {
-      var items = o.items || {}, f = o.facts || {};
-      var v = (o.overall === "complete")
-        ? "<div class='verdict ok'>Packet complete - all required elements present</div>"
-        : "<div class='verdict bad'>Incomplete - " + escapeHtml(o.missing_summary || "missing elements") + "</div>";
-      var effortFlag = "";
-      if (typeof f.effort_percent === "number") {
-        effortFlag = (f.effort_percent > 25)
-          ? "<div class='flag bad'>\u26A0 Proposed effort " + f.effort_percent + "% exceeds the 25% cap.</div>"
-          : "<div class='flag ok'>Proposed effort " + f.effort_percent + "% (within the 25% cap).</div>";
-      } else {
-        effortFlag = "<div class='flag warn'>Effort % not stated - confirm in the budget.</div>";
+      var type = otpiType(o), req = OTPI_REQUIRED[type], items = o.items || {}, f = o.facts || {};
+      var missing = otpiMissing(o), complete = missing.length === 0;
+
+      var basis = o.requester_type_basis ? escapeHtml(o.requester_type_basis) : "";
+      var banner = (type === "standard")
+        ? "<div class='typebanner std'>Requester type: " + OTPI_TYPE_LABEL.standard + (basis ? " - " + basis : "") + "</div>"
+        : "<div class='typebanner spec'>\u26A0 Inferred requester type: " + OTPI_TYPE_LABEL[type] +
+          (basis ? " - " + basis : "") + ". This applies a lighter checklist and waives the standard development-plan requirements. Confirm the type is correct before relying on the result.</div>";
+
+      var v = complete
+        ? "<div class='verdict ok'>Complete - all required elements present</div>"
+        : "<div class='verdict bad'>Incomplete - missing: " +
+          missing.map(function (k) { return escapeHtml(OTPI_LABELS[k] || k); }).join(", ") + "</div>";
+
+      var displayKeys = req.slice();
+      var optionalKeys = [];
+      if (type === "standard") { displayKeys.push("abstract"); optionalKeys = ["abstract"]; }
+      var fieldList = fieldListFromKeys(displayKeys, items, optionalKeys);
+
+      // deterministic checks
+      var checks = "";
+      if (type === "standard") {
+        if (typeof f.effort_percent === "number") {
+          checks += (f.effort_percent > 25)
+            ? "<div class='flag bad'>\u26A0 Proposed effort " + f.effort_percent + "% exceeds the 25% cap.</div>"
+            : "<div class='flag ok'>Proposed effort " + f.effort_percent + "% (within the 25% cap).</div>";
+        } else {
+          checks += "<div class='flag warn'>Effort % not stated - confirm in the budget.</div>";
+        }
       }
+      if (type === "incoming_faculty") checks += nineMonthFlag(f);
+
       var factRows = [];
       function fr(l, val){ if(val!==null&&val!==undefined&&String(val)!=="") factRows.push("<b>"+l+":</b> "+escapeHtml(String(val))); }
       fr("Proposed PI", f.proposed_pi); fr("DLC", f.dlc); fr("Sponsor", f.sponsor);
       fr("Working with", f.working_with_pi); fr("Proposal period", f.proposal_period); fr("Salary support", f.salary_support);
+      if (type === "incoming_faculty") { fr("Proposal start", f.proposal_start_date); fr("Faculty start", f.faculty_start_date); }
       if (typeof f.prior_requests==="number" || typeof f.prior_awarded==="number")
         fr("Prior requests / awarded", (f.prior_requests==null?"?":f.prior_requests)+" / "+(f.prior_awarded==null?"?":f.prior_awarded));
       var facts = factRows.length ? ("<div class='facts'>"+factRows.join("<br>")+"</div>") : "";
-      var reminder = "<div class='reminder'>Reviewer judgment (not auto-checked): small scope/dollars; not a significant salary source; uniqueness; alignment or criticality to the unit; oversight in place; robust mentorship; postdocs only if the sponsor requires it.</div>";
-      return "<h2>One-time PI/Co-PI Status Request</h2>" + v + renderFieldList(items, OTPI_LABELS, ["abstract"]) + effortFlag + facts + reminder;
+
+      var reminder = (type === "standard")
+        ? "<div class='reminder'>Reviewer judgment (not auto-checked): small scope/dollars; not a significant salary source; uniqueness; alignment or criticality to the unit; oversight in place; robust mentorship; postdocs only if the sponsor requires it.</div>"
+        : "";
+
+      return "<h2>One-time PI/Co-PI Status Request</h2>" + banner + v + fieldList + checks + facts + reminder;
+    }
+
+    function parseISO(s) {
+      if (!s || !/^\d{4}-\d{2}-\d{2}$/.test(s)) return null;
+      var d = new Date(s + "T00:00:00"); return isNaN(d.getTime()) ? null : d;
+    }
+    function addMonths(d, n) { return new Date(d.getFullYear(), d.getMonth() + n, d.getDate()); }
+    function nineMonthFlag(f) {
+      var ps = parseISO(f.proposal_start_date), fs = parseISO(f.faculty_start_date);
+      if (!ps || !fs) return "<div class='flag warn'>Couldn't verify the 9-month rule (missing/unclear dates) - check manually.</div>";
+      if (ps > addMonths(fs, 9))
+        return "<div class='flag bad'>\u26A0 Proposal start (" + escapeHtml(f.proposal_start_date) + ") is more than 9 months after the faculty start (" + escapeHtml(f.faculty_start_date) + ") - exceeds the 9-month limit.</div>";
+      return "<div class='flag ok'>Proposal start is within 9 months of the faculty start date.</div>";
     }
 
     function slot(val, placeholder) {
@@ -259,14 +319,13 @@
       return { status:"notfound" };
     }
 
-    // ---- waiver: approval (reply-all, native quoting + Outlook signature) ----
+    // ---- waiver approval (reply-all, native quoting + Outlook signature) ----
     function draftWaiverApproval() {
       var items = (lastResult && lastResult.waiver && lastResult.waiver.items) || {};
       var ras = items.ras_contact || {};
       var caName = ras.value || "";
       var caMatch = matchCA(caName);
 
-      // CC to ADD (reply-all already carries everyone on the original): CA + fixed RAS.
       var toAdd = [];
       if (caMatch.status === "matched") toAdd.push(caMatch.ca.email);
       FIXED_RAS_CC.forEach(function (e) { toAdd.push(e); });
@@ -312,9 +371,8 @@
 
     // ---- one-time PI drafts ----
     function draftOtpiReturn() {
-      var items = (lastResult && lastResult.one_time_pi && lastResult.one_time_pi.items) || {};
-      var missing = Object.keys(items).filter(function (k) { return k !== "abstract" && !items[k].present; })
-        .map(function (k) { return "<li>" + (OTPI_LABELS[k]||k) + "</li>"; }).join("");
+      var o = (lastResult && lastResult.one_time_pi) || { items:{} };
+      var missing = otpiMissing(o).map(function (k) { return "<li>" + (OTPI_LABELS[k]||k) + "</li>"; }).join("");
       if (!missing) missing = "<li>(nothing flagged - check manually)</li>";
       var html = "Hi,<br><br>Thank you for your one-time PI/Co-PI status request. Before it can go for School review, the following required elements appear to be missing or incomplete:<br><ul>" +
         missing + "</ul>Please revise and resubmit with these included. Note that School review can take one to two weeks once a complete request is received.<br><br>Best,";
