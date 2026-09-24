@@ -25,20 +25,24 @@ For a WAIVER, check these 7 required items (presence only):
 
 For ONE_TIME_PI, FIRST infer requester_type from context (there is NO explicit flag - infer from cues; when cues are absent or ambiguous, DEFAULT to "standard", the strictest):
   - "incoming_faculty": the researcher is NOT yet at MIT but has an incoming/visiting faculty appointment and work authorization (cues: "visiting appointment", "not yet at MIT", "will join", "incoming faculty", "starting <date>").
-  - "emeritus": a retired, emeritus, or post-tenure faculty member who no longer holds automatic PI status (cues: "emeritus", "retired", "post-retirement", "post-tenure", "post tenure"). At MIT, "Post-Tenure" is the appointment status for retired faculty who retain a paid appointment, so treat "post-tenure" as this type.
+  - "emeritus": a retired/emeritus faculty member who lost automatic PI status at retirement (cues: "emeritus", "retired", "post-retirement").
   - "standard": everyone else (a developing researcher seeking PI status for career growth).
 Report requester_type and requester_type_basis (a short phrase naming the cue, or "no special cues; treated as standard").
 
 Then report presence {present, note} for the elements relevant to the inferred type:
   - standard: researcher_name, endorsement, reason_needed, career_trajectory, mentoring_plan, prior_history, proposal_title, sponsor, budget, salary_support, due_date, abstract (OPTIONAL), oversight_individual, research_landscape.
   - incoming_faculty: researcher_name, proposal_title, sponsor, due_date, visiting_appointment (confirmation of the incoming/visiting appointment), work_authorization (confirmation of work authorization).
-  - emeritus: researcher_name, proposal_title, sponsor, due_date, emeritus_confirmation (confirmation of emeritus, retired, or post-tenure status).
+  - emeritus: researcher_name, proposal_title, sponsor, due_date, emeritus_confirmation (confirmation of emeritus/retired status).
 Do NOT compute completeness - the application does that.
 
 Extract these facts (stated only; null/empty if not stated; NEVER guess):
-  proposed_pi, dlc, sponsor, working_with_pi, proposal_period, salary_support, effort_percent (NUMBER or null), prior_requests (NUMBER or null), prior_awarded (NUMBER or null),
+  proposed_pi, dlc, sponsor, proposal_title, working_with_pi, proposal_period,
+  salary_support (the salary support the proposed PI/Co-PI would receive from THIS proposal, e.g. "3 months per year" or "2 summer months"; this is NOT the total budget or the amount to MIT; "" if not stated),
+  effort_percent (NUMBER or null), prior_requests (NUMBER or null), prior_awarded (NUMBER or null),
   proposal_start_date (the proposal's project start date, normalized to YYYY-MM-DD if determinable, else ""),
-  faculty_start_date (the researcher's official MIT faculty start date, normalized to YYYY-MM-DD if determinable, else "").
+  faculty_start_date (the researcher's official MIT faculty start date, normalized to YYYY-MM-DD if determinable, else ""),
+  status_label (for the emeritus/incoming types, the researcher's stated status term such as "post-tenure", "emeritus", "retired", or "incoming faculty"; "" for standard),
+  reason_summary (one concise sentence stating why PI status is warranted or the researcher's role/expertise on the project, drawn from the request; "" if not stated).
 Normalize dates only; do NOT compute any interval or gap between them - the application does that.
 
 Return ONLY valid JSON, no preamble:
@@ -67,10 +71,11 @@ Return ONLY valid JSON, no preamble:
       // for "standard" include abstract too (optional)
     },
     "facts": {
-      "proposed_pi": "", "dlc": "", "sponsor": "", "working_with_pi": "",
+      "proposed_pi": "", "dlc": "", "sponsor": "", "proposal_title": "", "working_with_pi": "",
       "proposal_period": "", "salary_support": "",
       "effort_percent": null, "prior_requests": null, "prior_awarded": null,
-      "proposal_start_date": "", "faculty_start_date": ""
+      "proposal_start_date": "", "faculty_start_date": "",
+      "status_label": "", "reason_summary": ""
     }
   }
 }
