@@ -25,14 +25,14 @@ For a WAIVER, check these 7 required items (presence only):
 
 For ONE_TIME_PI, FIRST infer requester_type from context (there is NO explicit flag - infer from cues; when cues are absent or ambiguous, DEFAULT to "standard", the strictest):
   - "incoming_faculty": the researcher is NOT yet at MIT but has an incoming/visiting faculty appointment and work authorization (cues: "visiting appointment", "not yet at MIT", "will join", "incoming faculty", "starting <date>").
-  - "emeritus": a retired/emeritus faculty member who lost automatic PI status at retirement (cues: "emeritus", "retired", "post-retirement").
+  - "emeritus": a retired, emeritus, or post-tenure faculty member who no longer holds automatic PI status (cues: "emeritus", "retired", "post-retirement", "post-tenure", "post tenure"). At MIT, "Post-Tenure" is the appointment status for retired faculty who retain a paid appointment, so treat "post-tenure" as this type.
   - "standard": everyone else (a developing researcher seeking PI status for career growth).
 Report requester_type and requester_type_basis (a short phrase naming the cue, or "no special cues; treated as standard").
 
 Then report presence {present, note} for the elements relevant to the inferred type:
   - standard: researcher_name, endorsement, reason_needed, career_trajectory, mentoring_plan, prior_history, proposal_title, sponsor, budget, salary_support, due_date, abstract (OPTIONAL), oversight_individual, research_landscape.
   - incoming_faculty: researcher_name, proposal_title, sponsor, due_date, visiting_appointment (confirmation of the incoming/visiting appointment), work_authorization (confirmation of work authorization).
-  - emeritus: researcher_name, proposal_title, sponsor, due_date, emeritus_confirmation (confirmation of emeritus/retired status).
+  - emeritus: researcher_name, proposal_title, sponsor, due_date, emeritus_confirmation (confirmation of emeritus, retired, or post-tenure status).
 Do NOT compute completeness - the application does that.
 
 Extract these facts (stated only; null/empty if not stated; NEVER guess):
