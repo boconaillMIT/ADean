@@ -87,7 +87,7 @@
       research_landscape:"Research landscape comment",
       visiting_appointment:"Visiting appointment confirmation",
       work_authorization:"Work authorization confirmation",
-      emeritus_confirmation:"Emeritus status confirmation"
+      emeritus_confirmation:"Emeritus / post-tenure status confirmation"
     };
     // Required elements per requester type. Abstract is optional for standard (shown, never required).
     var OTPI_REQUIRED = {
@@ -98,7 +98,7 @@
     var OTPI_TYPE_LABEL = {
       standard: "Standard (developing researcher)",
       incoming_faculty: "Incoming faculty (visiting appointment + work authorization)",
-      emeritus: "Emeritus / post-retirement"
+      emeritus: "Emeritus / post-tenure / post-retirement"
     };
 
     var CA_LIST = [
@@ -380,7 +380,16 @@
     }
 
     function draftOtpiPlata() {
-      var f = (lastResult && lastResult.one_time_pi && lastResult.one_time_pi.facts) || {};
+      var o = (lastResult && lastResult.one_time_pi) || {};
+      var f = o.facts || {};
+      var type = otpiType(o);
+      var html = (type === "standard") ? plataStandard(f) : plataNonStandard(type, f);
+      var subj = "One-time PI status recommendation" + (f.proposed_pi ? " - " + f.proposed_pi : "");
+      showNewMessagePreview(html, PLATA_EMAIL, subj);
+    }
+
+    // Standard (developing researcher): lead-PI framing + B6 prior-history line.
+    function plataStandard(f) {
       var pi = slot(f.proposed_pi, "proposed PI");
       var priorLine;
       if (typeof f.prior_requests === "number" || typeof f.prior_awarded === "number") {
@@ -390,8 +399,7 @@
       } else {
         priorLine = "<b>[Fill in: number of prior one-time PI status requests and how many were approved - required packet element B6.]</b>";
       }
-      var html =
-        "Hi Professor Plata,<br><br>" +
+      return "Hi Professor Plata,<br><br>" +
         slot(f.dlc,"DLC") + " is requesting one-time PI status for " + pi + " for a " + slot(f.sponsor,"sponsor") +
         " proposal. The request has department approval and would allow " + pi +
         " to serve as the lead MIT PI on the proposal, working with " + slot(f.working_with_pi,"PI") + ".<br><br>" +
@@ -399,8 +407,22 @@
         slot(f.salary_support,"salary support") + " of salary support each year.<br><br>" +
         "For context, " + priorLine + "<br><br>" +
         "I reviewed the submission and recommend it for approval. Please let me know if you agree and/or if you have any further questions.<br><br>Sincerely,";
-      var subj = "One-time PI status recommendation" + (f.proposed_pi ? " - " + f.proposed_pi : "");
-      showNewMessagePreview(html, PLATA_EMAIL, subj);
+    }
+
+    // Post-tenure / emeritus (and incoming faculty): no development framing, no B6.
+    function plataNonStandard(type, f) {
+      var pi = slot(f.proposed_pi, "professor");
+      var statusClause = (type === "incoming_faculty")
+        ? "an incoming faculty member"
+        : "who holds " + slot(f.status_label, "post-tenure/emeritus") + " status";
+      return "Hi Professor Plata,<br><br>" +
+        slot(f.dlc,"DLC") + " is requesting one-time PI status for " + pi + ", " + statusClause +
+        ", for a " + slot(f.sponsor,"sponsor") + " proposal (" + slot(f.proposal_title,"proposal title") +
+        "). The request has department approval.<br><br>" +
+        slot(f.reason_summary, "one line on the professor's role / expertise on the project") + "<br><br>" +
+        "The proposal period is " + slot(f.proposal_period,"period") + " and if awarded, the funding would provide " +
+        slot(f.salary_support,"salary support") + " of salary support each year.<br><br>" +
+        "I reviewed the submission and recommend it for approval. Please let me know if you agree and/or if you have any further questions.<br><br>Sincerely,";
     }
 
     // ---- preview + send helpers ----
