@@ -56,7 +56,7 @@
   </style>
 </head>
 <body>
-  <h1>SoE Request Pre-Check</h1>
+  <h1>SoE Request Pre-Check <span style="color:var(--muted);font-size:11px;font-weight:normal;">v2026-09-24d</span></h1>
   <details id="pasteBox">
     <summary>Paste PDF / extra text (optional)</summary>
     <textarea id="pastedText" rows="6" placeholder="Paste the PDF text or any extra request content here. It will be included in the check."></textarea>
@@ -232,8 +232,10 @@
 
     // ---- one-time PI (requester-type aware) ----
     function otpiType(o) {
-      var t = o.requester_type;
-      return (t === "incoming_faculty" || t === "emeritus") ? t : "standard";
+      var t = String((o && o.requester_type) || "").toLowerCase();
+      if (t.indexOf("incoming") >= 0 || t.indexOf("visit") >= 0) return "incoming_faculty";
+      if (t.indexOf("emerit") >= 0 || t.indexOf("retire") >= 0 || t.indexOf("tenure") >= 0) return "emeritus";
+      return "standard";
     }
     function otpiMissing(o) {
       var type = otpiType(o), req = OTPI_REQUIRED[type], items = o.items || {};
@@ -272,6 +274,14 @@
         }
       }
       if (type === "incoming_faculty") checks += nineMonthFlag(f);
+      if (f.is_postdoc === true) {
+        if (f.call_postdoc_note && String(f.call_postdoc_note).trim()) {
+          checks += "<div class='flag ok'>Researcher is a postdoc - normally NOT eligible for one-off PI status. However, this proposal appears to be " +
+            escapeHtml(String(f.call_postdoc_note)) + ", an award mechanism specifically for postdocs, which is a recognized exception. Confirm and proceed.</div>";
+        } else {
+          checks += "<div class='flag bad'>\u26A0 Researcher appears to be a postdoc. Postdocs get PI status ONLY when the sponsor/call specifically requires a postdoc PI - not for general career development. Confirm the call requires it before recommending approval.</div>";
+        }
+      }
 
       var factRows = [];
       function fr(l, val){ if(val!==null&&val!==undefined&&String(val)!=="") factRows.push("<b>"+l+":</b> "+escapeHtml(String(val))); }
@@ -415,13 +425,17 @@
       var statusClause = (type === "incoming_faculty")
         ? "an incoming faculty member"
         : "who holds " + slot(f.status_label, "post-tenure/emeritus") + " status";
+      // Salary support is optional for these types: include the sentence only if provided.
+      var salaryLine = (f.salary_support && String(f.salary_support).trim())
+        ? ("The proposal period is " + slot(f.proposal_period,"period") + " and if awarded, the funding would provide " +
+           escapeHtml(String(f.salary_support)) + " of salary support each year.<br><br>")
+        : "";
       return "Hi Professor Plata,<br><br>" +
         slot(f.dlc,"DLC") + " is requesting one-time PI status for " + pi + ", " + statusClause +
         ", for a " + slot(f.sponsor,"sponsor") + " proposal (" + slot(f.proposal_title,"proposal title") +
         "). The request has department approval.<br><br>" +
         slot(f.reason_summary, "one line on the professor's role / expertise on the project") + "<br><br>" +
-        "The proposal period is " + slot(f.proposal_period,"period") + " and if awarded, the funding would provide " +
-        slot(f.salary_support,"salary support") + " of salary support each year.<br><br>" +
+        salaryLine +
         "I reviewed the submission and recommend it for approval. Please let me know if you agree and/or if you have any further questions.<br><br>Sincerely,";
     }
 
