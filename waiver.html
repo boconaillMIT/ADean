@@ -56,7 +56,7 @@
   </style>
 </head>
 <body>
-  <h1>SoE Request Pre-Check <span style="color:var(--muted);font-size:11px;font-weight:normal;">v2026-09-24h</span></h1>
+  <h1>SoE Request Pre-Check <span style="color:var(--muted);font-size:11px;font-weight:normal;">v2026-09-24i</span></h1>
   <details id="pasteBox">
     <summary>Paste PDF / extra text (optional)</summary>
     <textarea id="pastedText" rows="6" placeholder="Paste the PDF text or any extra request content here. It will be included in the check."></textarea>
@@ -71,6 +71,7 @@
   <script>
     var FUNCTION_URL = "/.netlify/functions/parley-waiver-check";
     var PLATA_EMAIL = "dplata@mit.edu";
+    var SOE_RESEARCH = "soe-research@mit.edu";
     var FIXED_RAS_CC = ["mcorcor@mit.edu", "vholmes@mit.edu", "laureena@mit.edu"];
 
     var WAIVER_LABELS = {
@@ -214,7 +215,7 @@
         if (it.present) { cls="ok"; mark="\u2713"; }
         else if (isOpt) { cls="opt"; mark="\u2013"; }
         else { cls="bad"; mark="\u2717"; }
-        var note = it.note ? " <span class='note'>- " + escapeHtml(it.note) + "</span>" : "";
+        var note = (!it.present && it.note) ? " <span class='note'>- " + escapeHtml(it.note) + "</span>" : "";
         return "<li class='" + cls + "'><span class='mark'>" + mark + "</span>" + (OTPI_LABELS[k]||WAIVER_LABELS[k]||k) + note + "</li>";
       }).join("") + "</ul>";
     }
@@ -271,12 +272,14 @@
       var pdExc = isPostdocExc(f);
       var checks = "";
       if (type === "standard" && !pdExc) {
-        if (typeof f.effort_percent === "number") {
-          checks += (f.effort_percent > 25)
-            ? "<div class='flag bad'>\u26A0 Proposed effort " + f.effort_percent + "% exceeds the 25% cap.</div>"
-            : "<div class='flag ok'>Proposed effort " + f.effort_percent + "% (within the 25% cap).</div>";
+        var capPct = (typeof f.effort_percent === "number") ? f.effort_percent
+                   : (typeof f.salary_percent === "number") ? f.salary_percent : null;
+        if (capPct !== null) {
+          checks += (capPct > 25)
+            ? "<div class='flag bad'>\u26A0 Salary/effort coverage " + capPct + "% exceeds the usual 25% limit - an exception must be justified and disclosed to the Dean.</div>"
+            : "<div class='flag ok'>Salary/effort coverage " + capPct + "% (within the 25% limit).</div>";
         } else {
-          checks += "<div class='flag warn'>Effort % not stated - confirm in the budget.</div>";
+          checks += "<div class='flag warn'>Effort/salary coverage % not stated - confirm in the budget.</div>";
         }
       }
       if (type === "incoming_faculty") checks += nineMonthFlag(f);
@@ -429,11 +432,13 @@
         priorLine = "";
       }
       // Cap-exception callout: surface a >25% salary/effort exception to Prof. Plata (recommend-with-disclosure).
-      var effOver = (typeof f.effort_percent === "number" && f.effort_percent > 25);
+      var capPctP = (typeof f.effort_percent === "number") ? f.effort_percent
+                  : (typeof f.salary_percent === "number") ? f.salary_percent : null;
+      var effOver = (capPctP !== null && capPctP > 25);
       var capReason = (f.cap_exception_reason && String(f.cap_exception_reason).trim());
       var capLine = "";
       if (effOver || capReason) {
-        var amt = effOver ? (f.effort_percent + "%")
+        var amt = (capPctP !== null && capPctP > 25) ? (capPctP + "%")
           : ((f.salary_support && String(f.salary_support).trim()) ? escapeHtml(String(f.salary_support)) : "a significant share");
         capLine = "Please note: this proposal would cover " + amt +
           " of the researcher's salary, above the usual 25% limit. The department has requested this exception on the grounds that " +
@@ -493,9 +498,9 @@
     function showNewMessagePreview(html, to, subject) {
       var wrap = document.getElementById("previewWrap");
       var caution = "<div class='caution'>\u26A0 This opens a NEW email to " + escapeHtml(to) +
-        ". Review every filled-in detail - especially any [bracketed] placeholders - before sending.</div>";
+        " (CC: " + escapeHtml(SOE_RESEARCH) + "). Review every filled-in detail - especially any [bracketed] placeholders - before sending.</div>";
       wrap.innerHTML = caution + "<div class='preview'>" + html + "</div><button id='openBtn'>Open as new email</button>";
-      document.getElementById("openBtn").addEventListener("click", function () { openNewMessage([to], [], subject, html); });
+      document.getElementById("openBtn").addEventListener("click", function () { openNewMessage([to], [SOE_RESEARCH], subject, html); });
     }
 
     function openReply(html) {
