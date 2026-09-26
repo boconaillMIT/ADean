@@ -56,7 +56,7 @@
   </style>
 </head>
 <body>
-  <h1>SoE Request Pre-Check <span style="color:var(--muted);font-size:11px;font-weight:normal;">v2026-09-26c</span></h1>
+  <h1>SoE Request Pre-Check <span style="color:var(--muted);font-size:11px;font-weight:normal;">v2026-09-26d</span></h1>
   <details id="pasteBox">
     <summary>Paste PDF / extra text (optional)</summary>
     <textarea id="pastedText" rows="6" placeholder="Paste the PDF text or any extra request content here. It will be included in the check."></textarea>
@@ -548,7 +548,8 @@
           if (!out) return;
           if (!x.ok) { out.innerHTML = "<div class='flag bad'>Reply-all opened. Could not log to QB: " + escapeHtml(x.d.error || "request failed") + "</div>"; return; }
           if (x.d.duplicate) { out.innerHTML = "<div class='flag warn'>Reply-all opened. " + escapeHtml(x.d.message) + " (not logged again).</div>"; return; }
-          out.innerHTML = "<div class='flag ok'>Reply-all opened. " + escapeHtml(x.d.message || "Logged to QuickBase.") + "</div>";
+          out.innerHTML = "<div class='flag ok'>Reply-all opened. " + escapeHtml(x.d.message || "Logged to QuickBase.") + "</div>" +
+            "<details style='font-size:11px;color:var(--muted);'><summary>raw response</summary><pre>" + escapeHtml(JSON.stringify(x.d)) + "</pre></details>";
         })
         .catch(function (e) { if (out) out.innerHTML = "<div class='flag bad'>Reply-all opened. QB request failed: " + escapeHtml(String(e)) + "</div>"; });
     }
@@ -620,7 +621,8 @@
           if (!x.ok) { out.innerHTML = "<div class='flag bad'>Could not log: " + escapeHtml(x.d.error || "request failed") +
             (x.d.detail ? " - " + escapeHtml(JSON.stringify(x.d.detail)) : "") + "</div>"; return; }
           if (x.d.duplicate) { out.innerHTML = "<div class='flag warn'>" + escapeHtml(x.d.message) + " (not logged again).</div>"; return; }
-          out.innerHTML = "<div class='flag ok'>" + escapeHtml(x.d.message || "Logged.") + "</div>";
+          out.innerHTML = "<div class='flag ok'>" + escapeHtml(x.d.message || "Logged.") + "</div>" +
+            "<details style='font-size:11px;color:var(--muted);'><summary>raw response</summary><pre>" + escapeHtml(JSON.stringify(x.d)) + "</pre></details>";
         })
         .catch(function (e) { out.innerHTML = "<div class='flag bad'>Request failed: " + escapeHtml(String(e)) + "</div>"; });
     }
