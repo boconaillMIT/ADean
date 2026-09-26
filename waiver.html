@@ -56,7 +56,7 @@
   </style>
 </head>
 <body>
-  <h1>SoE Request Pre-Check <span style="color:var(--muted);font-size:11px;font-weight:normal;">v2026-09-24i</span></h1>
+  <h1>SoE Request Pre-Check <span style="color:var(--muted);font-size:11px;font-weight:normal;">v2026-09-26a</span></h1>
   <details id="pasteBox">
     <summary>Paste PDF / extra text (optional)</summary>
     <textarea id="pastedText" rows="6" placeholder="Paste the PDF text or any extra request content here. It will be included in the check."></textarea>
@@ -70,6 +70,7 @@
 
   <script>
     var FUNCTION_URL = "/.netlify/functions/parley-waiver-check";
+    var QB_FUNCTION_URL = "/.netlify/functions/qb-waiver";
     var PLATA_EMAIL = "dplata@mit.edu";
     var SOE_RESEARCH = "soe-research@mit.edu";
     var FIXED_RAS_CC = ["mcorcor@mit.edu", "vholmes@mit.edu", "laureena@mit.edu"];
@@ -191,7 +192,8 @@
       var btns = "";
       if (r.waiver) {
         btns += "<button id='wApprove'>Waiver: approval reply-all</button>" +
-                "<button id='wMissing' class='secondary'>Waiver: missing-info reply</button>";
+                "<button id='wMissing' class='secondary'>Waiver: missing-info reply</button>" +
+                "<button id='wLog' class='secondary'>Log approved waiver to QB</button>";
       }
       if (r.one_time_pi) {
         btns += "<button id='oReturn' class='secondary'>One-time PI: return for revision</button>" +
@@ -202,6 +204,9 @@
       if (r.waiver) {
         document.getElementById("wApprove").addEventListener("click", draftWaiverApproval);
         document.getElementById("wMissing").addEventListener("click", draftWaiverMissing);
+        document.getElementById("wLog").addEventListener("click", logWaiver);
+        var clb = document.getElementById("checkLimitBtn");
+        if (clb) clb.addEventListener("click", checkWaiverLimit);
       }
       if (r.one_time_pi) {
         document.getElementById("oReturn").addEventListener("click", draftOtpiReturn);
@@ -228,7 +233,13 @@
         : "<div class='verdict bad'>Incomplete - " + escapeHtml(w.missing_summary || "missing fields") + "</div>";
       var flag = (items.late_reason && items.late_reason.bad_faith)
         ? "<div class='flag bad'>\u26A0 Reason appears to dismiss the process - flag for a human.</div>" : "";
-      return "<h2>Proposal Waiver Request</h2>" + v + fieldListFromKeys(keys, items, []) + flag;
+      var limitUI =
+        "<div class='section-label'>Fiscal-year waiver limit (3 per PI)</div>" +
+        "<div style='font-size:13px;'>PI Kerberos: " +
+        "<input class='cc' id='kerbField' type='text' placeholder='e.g. eliz' style='width:auto; display:inline-block; min-width:120px;'/></div>" +
+        "<button id='checkLimitBtn' class='secondary'>Check FY waiver count</button>" +
+        "<div id='limitResult'></div>";
+      return "<h2>Proposal Waiver Request</h2>" + v + fieldListFromKeys(keys, items, []) + flag + limitUI;
     }
 
     // ---- one-time PI (requester-type aware) ----
@@ -536,6 +547,47 @@
     function selectCcField() {
       var el = document.getElementById("ccField");
       if (el) { el.focus(); el.select(); setStatus("Select the highlighted addresses and copy (Ctrl+C)."); }
+    }
+
+    function checkWaiverLimit() {
+      var el = document.getElementById("kerbField");
+      var kerb = el ? el.value.trim() : "";
+      var out = document.getElementById("limitResult");
+      if (!kerb) { out.innerHTML = "<div class='flag warn'>Enter the PI's Kerberos to check the FY waiver count.</div>"; return; }
+      out.innerHTML = "<div class='flag warn'>Checking QuickBase...</div>";
+      fetch(QB_FUNCTION_URL, { method:"POST", headers:{ "Content-Type":"application/json" }, body: JSON.stringify({ mode:"count", kerberos:kerb }) })
+        .then(function (r) { return r.json().then(function (d) { return { ok:r.ok, d:d }; }); })
+        .then(function (x) {
+          if (!x.ok) { out.innerHTML = "<div class='flag bad'>QuickBase error: " + escapeHtml(x.d.error || "request failed") + "</div>"; return; }
+          var n = x.d.count, willBe = n + 1;
+          if (n >= 3) {
+            out.innerHTML = "<div class='flag bad'>\u26A0 This PI has already used " + n + " waivers in FY" + escapeHtml(x.d.fy) +
+              " (limit is 3). A further waiver requires a Dean-level exception.</div>";
+          } else {
+            out.innerHTML = "<div class='flag ok'>This PI has used " + n + " waiver(s) in FY" + escapeHtml(x.d.fy) +
+              ". This one would be #" + willBe + " of 3.</div>";
+          }
+        })
+        .catch(function (e) { out.innerHTML = "<div class='flag bad'>Request failed: " + escapeHtml(String(e)) + "</div>"; });
+    }
+
+    function logWaiver() {
+      var el = document.getElementById("kerbField");
+      var kerb = el ? el.value.trim() : "";
+      var out = document.getElementById("limitResult");
+      if (!kerb) { out.innerHTML = "<div class='flag warn'>Enter the PI's Kerberos before logging the waiver.</div>"; return; }
+      var v = (lastResult && lastResult.waiver && lastResult.waiver.values) || {};
+      if (!v.kerberos) v.kerberos = kerb;
+      out.innerHTML = "<div class='flag warn'>Logging to QuickBase...</div>";
+      fetch(QB_FUNCTION_URL, { method:"POST", headers:{ "Content-Type":"application/json" }, body: JSON.stringify({ mode:"log", kerberos:kerb, values:v }) })
+        .then(function (r) { return r.json().then(function (d) { return { ok:r.ok, d:d }; }); })
+        .then(function (x) {
+          if (!x.ok) { out.innerHTML = "<div class='flag bad'>Could not log: " + escapeHtml(x.d.error || "request failed") +
+            (x.d.detail ? " - " + escapeHtml(JSON.stringify(x.d.detail)) : "") + "</div>"; return; }
+          if (x.d.duplicate) { out.innerHTML = "<div class='flag warn'>" + escapeHtml(x.d.message) + " (not logged again).</div>"; return; }
+          out.innerHTML = "<div class='flag ok'>" + escapeHtml(x.d.message || "Logged.") + "</div>";
+        })
+        .catch(function (e) { out.innerHTML = "<div class='flag bad'>Request failed: " + escapeHtml(String(e)) + "</div>"; });
     }
 
     function escapeHtml(s) {
