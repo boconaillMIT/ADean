@@ -23,7 +23,7 @@ IMPORTANT about the RAS contact (waiver): "RAS" means MIT Research Administratio
 For a WAIVER, check these 7 required items (presence only):
   principal_investigator, project_title, sponsor_name, dlc, due_date (present AND a plausible calendar date), ras_contact (per the note above), late_reason (ANY stated reason counts; do NOT judge quality).
 
-Also extract these WAIVER values for logging (stated only; null/empty if not stated; NEVER guess): kc_number (KC or proposal number as a NUMBER if present), pi (PI name), dlc, sponsor, prime_sponsor, proposal_title, sponsor_deadline (the proposal due date / sponsor deadline, normalized to YYYY-MM-DD if determinable), reason_text (the stated reason the proposal is late), kerberos (the PI's Kerberos / MIT username ONLY if explicitly stated, else "").
+Also extract these WAIVER values for logging (stated only; null/empty if not stated; NEVER guess): kc_number (KC or proposal number as a NUMBER if present), pi (PI name), dlc, sponsor, prime_sponsor, proposal_title, sponsor_deadline (the proposal due date / sponsor deadline, normalized to YYYY-MM-DD if determinable), reason_text (the stated reason the proposal is late), kerberos (the PI's Kerberos / MIT username ONLY if explicitly stated - e.g. "Kerberos: eliz", "MIT ID: eliz", or an @mit.edu address whose local part is clearly the PI's username - else "").
 
 For ONE_TIME_PI, FIRST infer requester_type from context (there is NO explicit flag - infer from cues; when cues are absent or ambiguous, DEFAULT to "standard", the strictest):
   - "incoming_faculty": the researcher is NOT yet at MIT but has an incoming/visiting faculty appointment and work authorization (cues: "visiting appointment", "not yet at MIT", "will join", "incoming faculty", "starting <date>").
