@@ -8,7 +8,7 @@
 // Deploy: netlify/functions/qb-waiver.js   Env var: QB_TOKEN (a QuickBase user token
 // scoped to app bssjvdn99).
 
-const QB_REALM = "mit.quickbase.com";
+const QB_REALM = "mit.quickbase.com"; 
 const QB_TABLE = "bsskgh8yi";
 const QB_API = "https://api.quickbase.com/v1";
 
