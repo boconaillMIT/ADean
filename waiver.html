@@ -56,7 +56,7 @@
   </style>
 </head>
 <body>
-  <h1>SoE Request Pre-Check <span style="color:var(--muted);font-size:11px;font-weight:normal;">v2026-09-24f</span></h1>
+  <h1>SoE Request Pre-Check <span style="color:var(--muted);font-size:11px;font-weight:normal;">v2026-09-24h</span></h1>
   <details id="pasteBox">
     <summary>Paste PDF / extra text (optional)</summary>
     <textarea id="pastedText" rows="6" placeholder="Paste the PDF text or any extra request content here. It will be included in the check."></textarea>
@@ -238,7 +238,9 @@
       return "standard";
     }
     function isPostdocExc(f) {
-      return (f && f.is_postdoc === true && f.call_postdoc_note && String(f.call_postdoc_note).trim());
+      // Keyed on the postdoc-specific MECHANISM being named - that is what makes it an exception,
+      // and it does not depend on the separate is_postdoc field being set.
+      return !!(f && f.call_postdoc_note && String(f.call_postdoc_note).trim());
     }
     function otpiMissing(o) {
       var type = otpiType(o), req = OTPI_REQUIRED[type], items = o.items || {};
@@ -391,8 +393,13 @@
     // ---- one-time PI drafts ----
     function draftOtpiReturn() {
       var o = (lastResult && lastResult.one_time_pi) || { items:{} };
-      var missing = otpiMissing(o).map(function (k) { return "<li>" + (OTPI_LABELS[k]||k) + "</li>"; }).join("");
-      if (!missing) missing = "<li>(nothing flagged - check manually)</li>";
+      var miss = otpiMissing(o);
+      if (miss.length === 0) {
+        document.getElementById("previewWrap").innerHTML =
+          "<div class='caution'>This packet appears COMPLETE - there is nothing to return for revision. If you meant to send the recommendation, use \"recommend to Prof. Plata\" instead.</div>";
+        return;
+      }
+      var missing = miss.map(function (k) { return "<li>" + (OTPI_LABELS[k]||k) + "</li>"; }).join("");
       var html = "Hi,<br><br>Thank you for your one-time PI/Co-PI status request. Before it can go for School review, the following required elements appear to be missing or incomplete:<br><ul>" +
         missing + "</ul>Please revise and resubmit with these included. Note that School review can take one to two weeks once a complete request is received.<br><br>Best,";
       showReplyPreview(html);
@@ -421,12 +428,25 @@
       } else {
         priorLine = "";
       }
+      // Cap-exception callout: surface a >25% salary/effort exception to Prof. Plata (recommend-with-disclosure).
+      var effOver = (typeof f.effort_percent === "number" && f.effort_percent > 25);
+      var capReason = (f.cap_exception_reason && String(f.cap_exception_reason).trim());
+      var capLine = "";
+      if (effOver || capReason) {
+        var amt = effOver ? (f.effort_percent + "%")
+          : ((f.salary_support && String(f.salary_support).trim()) ? escapeHtml(String(f.salary_support)) : "a significant share");
+        capLine = "Please note: this proposal would cover " + amt +
+          " of the researcher's salary, above the usual 25% limit. The department has requested this exception on the grounds that " +
+          slot(f.cap_exception_reason, "state why the exception is warranted") +
+          ". <b>[Confirm the exception rationale before sending.]</b><br><br>";
+      }
       return "Hi Professor Plata,<br><br>" +
         slot(f.dlc,"DLC") + " is requesting one-time PI status for " + pi + " for a " + slot(f.sponsor,"sponsor") +
         " proposal. The request has department approval and would allow " + pi +
         " to serve as the lead MIT PI on the proposal, working with " + slot(f.working_with_pi,"PI") + ".<br><br>" +
         "The proposal period is " + slot(f.proposal_period,"period") + " and if awarded, the funding would provide " +
         slot(f.salary_support,"salary support") + " of salary support each year.<br><br>" +
+        capLine +
         priorLine +
         "I reviewed the submission and recommend it for approval. Please let me know if you agree and/or if you have any further questions.<br><br>Sincerely,";
     }
