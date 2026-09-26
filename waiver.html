@@ -56,7 +56,7 @@
   </style>
 </head>
 <body>
-  <h1>SoE Request Pre-Check <span style="color:var(--muted);font-size:11px;font-weight:normal;">v2026-09-26a</span></h1>
+  <h1>SoE Request Pre-Check <span style="color:var(--muted);font-size:11px;font-weight:normal;">v2026-09-26b</span></h1>
   <details id="pasteBox">
     <summary>Paste PDF / extra text (optional)</summary>
     <textarea id="pastedText" rows="6" placeholder="Paste the PDF text or any extra request content here. It will be included in the check."></textarea>
@@ -388,10 +388,13 @@
         "<div class='section-label'>Add to CC (reply-all already includes everyone on the original):</div>" +
         "<input class='cc' id='ccField' type='text' readonly value='" + ccList.join("; ") + "' />" +
         "<button id='copyCcBtn' class='secondary'>Copy CC addresses</button>" +
-        "<button id='openBtn'>Open reply-all</button>";
+        "<div style='margin-top:6px;'>PI Kerberos (for QB log): " +
+        "<input class='cc' id='approveKerbField' type='text' placeholder='e.g. eliz' style='width:auto; display:inline-block; min-width:120px;'/></div>" +
+        "<button id='openBtn'>Open reply-all &amp; log to QB</button>" +
+        "<div id='approveLogResult'></div>";
 
       document.getElementById("copyCcBtn").addEventListener("click", function () { copyText(ccList.join("; ")); });
-      document.getElementById("openBtn").addEventListener("click", function () { openReplyAll(APPROVAL_BODY_HTML); });
+      document.getElementById("openBtn").addEventListener("click", function () { openReplyAllAndLog(APPROVAL_BODY_HTML); });
     }
 
     function draftWaiverMissing() {
@@ -518,6 +521,31 @@
       try { Office.context.mailbox.item.displayReplyForm(html); }
       catch (e) { setStatus("Could not open a reply: " + e); }
     }
+    function openReplyAllAndLog(html) {
+      // Open the reply-all right away - logging must never delay or block sending.
+      openReplyAll(html);
+
+      var kerbEl = document.getElementById("approveKerbField");
+      var kerb = kerbEl ? kerbEl.value.trim() : "";
+      var out = document.getElementById("approveLogResult");
+      if (!kerb) {
+        if (out) out.innerHTML = "<div class='flag warn'>Reply-all opened. Not logged to QB - enter the PI's Kerberos above and click again to log, or use the Log button after checking.</div>";
+        return;
+      }
+      var v = (lastResult && lastResult.waiver && lastResult.waiver.values) || {};
+      if (!v.kerberos) v.kerberos = kerb;
+      if (out) out.innerHTML = "<div class='flag warn'>Reply-all opened. Logging to QuickBase...</div>";
+      fetch(QB_FUNCTION_URL, { method:"POST", headers:{ "Content-Type":"application/json" }, body: JSON.stringify({ mode:"log", kerberos:kerb, values:v }) })
+        .then(function (r) { return r.json().then(function (d) { return { ok:r.ok, d:d }; }); })
+        .then(function (x) {
+          if (!out) return;
+          if (!x.ok) { out.innerHTML = "<div class='flag bad'>Reply-all opened. Could not log to QB: " + escapeHtml(x.d.error || "request failed") + "</div>"; return; }
+          if (x.d.duplicate) { out.innerHTML = "<div class='flag warn'>Reply-all opened. " + escapeHtml(x.d.message) + " (not logged again).</div>"; return; }
+          out.innerHTML = "<div class='flag ok'>Reply-all opened. " + escapeHtml(x.d.message || "Logged to QuickBase.") + "</div>";
+        })
+        .catch(function (e) { if (out) out.innerHTML = "<div class='flag bad'>Reply-all opened. QB request failed: " + escapeHtml(String(e)) + "</div>"; });
+    }
+
     function openReplyAll(html) {
       try { Office.context.mailbox.item.displayReplyAllForm(html); }
       catch (e) { setStatus("Could not open reply-all: " + e); }
