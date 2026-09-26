@@ -56,7 +56,7 @@
   </style>
 </head>
 <body>
-  <h1>SoE Request Pre-Check <span style="color:var(--muted);font-size:11px;font-weight:normal;">v2026-09-24e</span></h1>
+  <h1>SoE Request Pre-Check <span style="color:var(--muted);font-size:11px;font-weight:normal;">v2026-09-24f</span></h1>
   <details id="pasteBox">
     <summary>Paste PDF / extra text (optional)</summary>
     <textarea id="pastedText" rows="6" placeholder="Paste the PDF text or any extra request content here. It will be included in the check."></textarea>
@@ -237,6 +237,9 @@
       if (t.indexOf("emerit") >= 0 || t.indexOf("retire") >= 0 || t.indexOf("tenure") >= 0) return "emeritus";
       return "standard";
     }
+    function isPostdocExc(f) {
+      return (f && f.is_postdoc === true && f.call_postdoc_note && String(f.call_postdoc_note).trim());
+    }
     function otpiMissing(o) {
       var type = otpiType(o), req = OTPI_REQUIRED[type], items = o.items || {};
       return req.filter(function (k) { return !(items[k] && items[k].present); });
@@ -263,8 +266,9 @@
       var fieldList = fieldListFromKeys(displayKeys, items, optionalKeys);
 
       // deterministic checks
+      var pdExc = isPostdocExc(f);
       var checks = "";
-      if (type === "standard") {
+      if (type === "standard" && !pdExc) {
         if (typeof f.effort_percent === "number") {
           checks += (f.effort_percent > 25)
             ? "<div class='flag bad'>\u26A0 Proposed effort " + f.effort_percent + "% exceeds the 25% cap.</div>"
@@ -294,7 +298,6 @@
 
       var reminder = "";
       if (type === "standard") {
-        var pdExc = (f.is_postdoc === true && f.call_postdoc_note && String(f.call_postdoc_note).trim());
         var ri = ["small scope/dollars"];
         if (!pdExc) ri.push("not a significant salary source");
         ri.push("uniqueness", "alignment or criticality to the unit", "oversight in place", "robust mentorship");
@@ -399,7 +402,10 @@
       var o = (lastResult && lastResult.one_time_pi) || {};
       var f = o.facts || {};
       var type = otpiType(o);
-      var html = (type === "standard") ? plataStandard(f) : plataNonStandard(type, f);
+      var html;
+      if (type !== "standard") html = plataNonStandard(type, f);
+      else if (isPostdocExc(f)) html = plataPostdocException(f);
+      else html = plataStandard(f);
       var subj = "One-time PI status recommendation" + (f.proposed_pi ? " - " + f.proposed_pi : "");
       showNewMessagePreview(html, PLATA_EMAIL, subj);
     }
@@ -422,6 +428,19 @@
         "The proposal period is " + slot(f.proposal_period,"period") + " and if awarded, the funding would provide " +
         slot(f.salary_support,"salary support") + " of salary support each year.<br><br>" +
         priorLine +
+        "I reviewed the submission and recommend it for approval. Please let me know if you agree and/or if you have any further questions.<br><br>Sincerely,";
+    }
+
+    // Postdoc on a postdoc-specific mechanism (e.g. NIH K99/R00): name the exception, no salary/period line.
+    function plataPostdocException(f) {
+      var pi = slot(f.proposed_pi, "researcher");
+      return "Hi Professor Plata,<br><br>" +
+        slot(f.dlc,"DLC") + " is requesting one-time PI status for " + pi + " for a " + slot(f.sponsor,"sponsor") +
+        " proposal (" + slot(f.proposal_title,"proposal title") + "). The request has department approval and would allow " + pi +
+        " to serve as the lead MIT PI.<br><br>" +
+        pi + " is a postdoc, and this proposal is " + slot(f.call_postdoc_note, "an NIH K99/R00 (postdoc career-transition award)") +
+        " - one of the recognized cases in which a postdoc may hold one-time PI status.<br><br>" +
+        slot(f.reason_summary, "one line on the researcher's role / expertise on the project") + "<br><br>" +
         "I reviewed the submission and recommend it for approval. Please let me know if you agree and/or if you have any further questions.<br><br>Sincerely,";
     }
 
