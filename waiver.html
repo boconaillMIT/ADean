@@ -56,7 +56,7 @@
   </style>
 </head>
 <body>
-  <h1>SoE Request Pre-Check <span style="color:var(--muted);font-size:11px;font-weight:normal;">v2026-09-24d</span></h1>
+  <h1>SoE Request Pre-Check <span style="color:var(--muted);font-size:11px;font-weight:normal;">v2026-09-24e</span></h1>
   <details id="pasteBox">
     <summary>Paste PDF / extra text (optional)</summary>
     <textarea id="pastedText" rows="6" placeholder="Paste the PDF text or any extra request content here. It will be included in the check."></textarea>
@@ -80,7 +80,7 @@
     var OTPI_LABELS = {
       researcher_name:"Researcher's name", endorsement:"Dept/Lab Head endorsement",
       reason_needed:"Reason PI status needed", career_trajectory:"Career trajectory",
-      mentoring_plan:"Mentoring plan", prior_history:"Prior PI-status history",
+      mentoring_plan:"Mentoring plan", prior_history:"Prior PI-status history", mentor_relationship:"Mentor/mentee relationship established",
       proposal_title:"Proposal title", sponsor:"Sponsor", budget:"Budget (effort & scope)",
       salary_support:"Salary support level", due_date:"Proposal due date",
       abstract:"One-page abstract (optional)", oversight_individual:"Oversight individual",
@@ -91,7 +91,7 @@
     };
     // Required elements per requester type. Abstract is optional for standard (shown, never required).
     var OTPI_REQUIRED = {
-      standard: ["researcher_name","endorsement","reason_needed","career_trajectory","mentoring_plan","prior_history","proposal_title","sponsor","budget","salary_support","due_date","oversight_individual","research_landscape"],
+      standard: ["researcher_name","endorsement","reason_needed","career_trajectory","mentor_relationship","proposal_title","sponsor","budget","salary_support","due_date","oversight_individual","research_landscape"],
       incoming_faculty: ["researcher_name","proposal_title","sponsor","due_date","visiting_appointment","work_authorization"],
       emeritus: ["researcher_name","proposal_title","sponsor","due_date","emeritus_confirmation"]
     };
@@ -277,7 +277,7 @@
       if (f.is_postdoc === true) {
         if (f.call_postdoc_note && String(f.call_postdoc_note).trim()) {
           checks += "<div class='flag ok'>Researcher is a postdoc - normally NOT eligible for one-off PI status. However, this proposal appears to be " +
-            escapeHtml(String(f.call_postdoc_note)) + ", an award mechanism specifically for postdocs, which is a recognized exception. Confirm and proceed.</div>";
+            escapeHtml(String(f.call_postdoc_note)) + ", an award mechanism specifically for postdocs, which is a recognized exception. Significant salary coverage from this award is expected for this mechanism and is not a concern. Confirm and proceed.</div>";
         } else {
           checks += "<div class='flag bad'>\u26A0 Researcher appears to be a postdoc. Postdocs get PI status ONLY when the sponsor/call specifically requires a postdoc PI - not for general career development. Confirm the call requires it before recommending approval.</div>";
         }
@@ -292,9 +292,15 @@
         fr("Prior requests / awarded", (f.prior_requests==null?"?":f.prior_requests)+" / "+(f.prior_awarded==null?"?":f.prior_awarded));
       var facts = factRows.length ? ("<div class='facts'>"+factRows.join("<br>")+"</div>") : "";
 
-      var reminder = (type === "standard")
-        ? "<div class='reminder'>Reviewer judgment (not auto-checked): small scope/dollars; not a significant salary source; uniqueness; alignment or criticality to the unit; oversight in place; robust mentorship; postdocs only if the sponsor requires it.</div>"
-        : "";
+      var reminder = "";
+      if (type === "standard") {
+        var pdExc = (f.is_postdoc === true && f.call_postdoc_note && String(f.call_postdoc_note).trim());
+        var ri = ["small scope/dollars"];
+        if (!pdExc) ri.push("not a significant salary source");
+        ri.push("uniqueness", "alignment or criticality to the unit", "oversight in place", "robust mentorship");
+        if (!pdExc) ri.push("postdocs only if the sponsor requires it");
+        reminder = "<div class='reminder'>Reviewer judgment (not auto-checked): " + ri.join("; ") + ".</div>";
+      }
 
       return "<h2>One-time PI/Co-PI Status Request</h2>" + banner + v + fieldList + checks + facts + reminder;
     }
@@ -403,11 +409,11 @@
       var pi = slot(f.proposed_pi, "proposed PI");
       var priorLine;
       if (typeof f.prior_requests === "number" || typeof f.prior_awarded === "number") {
-        priorLine = pi + " has had " + (f.prior_requests==null?"<b>[#]</b>":f.prior_requests) +
+        priorLine = "For context, " + pi + " has had " + (f.prior_requests==null?"<b>[#]</b>":f.prior_requests) +
           " prior one-time PI status request(s), " + (f.prior_awarded==null?"<b>[#]</b>":f.prior_awarded) +
-          " of which were approved. <b>[Confirm the fiscal-year breakdown before sending.]</b>";
+          " of which were approved.<br><br>";
       } else {
-        priorLine = "<b>[Fill in: number of prior one-time PI status requests and how many were approved - required packet element B6.]</b>";
+        priorLine = "";
       }
       return "Hi Professor Plata,<br><br>" +
         slot(f.dlc,"DLC") + " is requesting one-time PI status for " + pi + " for a " + slot(f.sponsor,"sponsor") +
@@ -415,7 +421,7 @@
         " to serve as the lead MIT PI on the proposal, working with " + slot(f.working_with_pi,"PI") + ".<br><br>" +
         "The proposal period is " + slot(f.proposal_period,"period") + " and if awarded, the funding would provide " +
         slot(f.salary_support,"salary support") + " of salary support each year.<br><br>" +
-        "For context, " + priorLine + "<br><br>" +
+        priorLine +
         "I reviewed the submission and recommend it for approval. Please let me know if you agree and/or if you have any further questions.<br><br>Sincerely,";
     }
 
