@@ -8,7 +8,7 @@
 // Deploy: netlify/functions/qb-waiver.js   Env var: QB_TOKEN (a QuickBase user token
 // scoped to app bssjvdn99).
 
-const QB_REALM = "mit.quickbase.com"; 
+const QB_REALM = "mit.quickbase.com";
 const QB_TABLE = "bsskgh8yi";
 const QB_API = "https://api.quickbase.com/v1";
 
@@ -18,7 +18,7 @@ const F = {
   FISCAL_YEAR: 6, PI: 7, DLC: 8, DEPT_ENDORSEMENT: 9, SPONSOR: 10,
   PROPOSAL_TITLE: 11, DATE_OF_REQUEST: 12, SPONSOR_DEADLINE: 13,
   DECISION_DATE: 14, DECISION: 15, REASON: 16, PRIME_SPONSOR: 17,
-  RAS: 28, KC_NUMBER: 29, ANTICIPATED_RAS: 31, KERBEROS: 33,
+  RAS: 28, KC_NUMBER: 29, ANTICIPATED_RAS: 31, KERBEROS: 33, WAIVER_ORDINAL: 18,
 };
 
 function currentFY() {
@@ -94,10 +94,22 @@ exports.handler = async (event) => {
         }
       }
 
+      // Compute "# waiver this FY (including this proposal)" = prior approved count for this
+      // Kerberos/FY + 1, so field 18 is always derived, never guessed or left blank.
+      const countWhere = "{" + F.KERBEROS + ".EX.'" + qesc(kerb) + "'}AND{" + F.FISCAL_YEAR + ".EX.'" + qesc(fy) + "'}AND{" + F.DECISION + ".EX.'Approved'}";
+      const cr0 = await fetch(QB_API + "/records/query", {
+        method: "POST", headers,
+        body: JSON.stringify({ from: QB_TABLE, select: [F.RECORD_ID], where: countWhere }),
+      });
+      const cd0 = await cr0.json();
+      const priorCount = cr0.ok ? (cd0.data || []).length : 0;
+      const waiverOrdinal = priorCount + 1;
+
       const rec = {};
       const put = (fid, val) => { if (val !== undefined && val !== null && String(val) !== "") rec[fid] = { value: val }; };
       put(F.KERBEROS, kerb);
       put(F.FISCAL_YEAR, fy);
+      put(F.WAIVER_ORDINAL, waiverOrdinal);
       put(F.KC_NUMBER, v.kc_number);
       put(F.PI, v.pi);
       put(F.DLC, v.dlc);
@@ -117,8 +129,11 @@ exports.handler = async (event) => {
       });
       const cd = await cr.json();
       if (!cr.ok) return fail(502, { error: "QuickBase create failed", detail: cd });
-      const id = cd.metadata && cd.metadata.createdRecordIds && cd.metadata.createdRecordIds[0];
-      return ok({ logged: true, recordId: id, message: "Waiver logged to QuickBase (record " + id + ")." });
+      var id = cd.metadata && cd.metadata.createdRecordIds && cd.metadata.createdRecordIds[0];
+      if (id === undefined && cd.data && cd.data[0] && cd.data[0][String(F.RECORD_ID)]) {
+        id = cd.data[0][String(F.RECORD_ID)].value; // fallback if metadata shape differs
+      }
+      return ok({ logged: true, recordId: id, waiverOrdinal: waiverOrdinal, message: "Waiver logged to QuickBase (record " + id + ", waiver #" + waiverOrdinal + " this FY)." });
     }
 
     return fail(400, { error: "Unknown mode; use 'count' or 'log'." });
