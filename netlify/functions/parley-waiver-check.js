@@ -43,6 +43,7 @@ Extract these facts (stated only; null/empty if not stated; NEVER guess):
   faculty_start_date (the researcher's official MIT faculty start date, normalized to YYYY-MM-DD if determinable, else ""),
   status_label (for the emeritus/incoming types, the researcher's stated status term such as "post-tenure", "emeritus", "retired", or "incoming faculty"; "" for standard),
   reason_summary (one concise sentence stating why PI status is warranted or the researcher's role/expertise on the project, drawn from the request; "" if not stated).
+  salary_percent (the salary-coverage or Level-of-Effort percentage as a NUMBER, ONLY if a percentage is explicitly stated - e.g. "75% LOE" or "covers 75% of salary" gives 75; null if salary support is not expressed as a percentage).
   cap_exception_reason (if the request acknowledges that salary coverage or effort EXCEEDS the usual 25% limit and gives a justification for the exception, capture that justification here, e.g. "the funding continues the researcher's existing Gates Foundation effort"; otherwise "").
   is_postdoc (true if the text anywhere indicates the researcher is or has been a postdoc / postdoctoral associate / postdoctoral fellow - e.g. "has been a postdoc", "postdoctoral" - otherwise false; check the career-trajectory and reason text carefully, this is often stated there).
   call_postdoc_note (if the proposal names a funding mechanism that is specifically a POSTDOCTORAL career-transition / mentored award - e.g. NIH K99/R00, NIH F32 or other F-series, NIH K-series career awards, NSF postdoctoral fellowship - OR the text says the call requires a postdoc, name that mechanism briefly here, e.g. "NIH K99/R00 (postdoc career-transition award)"; otherwise "". ALWAYS set this whenever "K99", "R00", "K99/R00", an NIH F- or K-series award, or a named postdoctoral fellowship appears anywhere in the request.
@@ -78,7 +79,7 @@ Return ONLY valid JSON, no preamble:
       "proposal_period": "", "salary_support": "",
       "effort_percent": null, "prior_requests": null, "prior_awarded": null,
       "proposal_start_date": "", "faculty_start_date": "",
-      "status_label": "", "reason_summary": "", "cap_exception_reason": "", "is_postdoc": false, "call_postdoc_note": ""
+      "status_label": "", "reason_summary": "", "salary_percent": null, "cap_exception_reason": "", "is_postdoc": false, "call_postdoc_note": ""
     }
   }
 }
@@ -88,6 +89,7 @@ Rules:
 - ras_contact.value = the RAS-side reviewer's name if the submitter named one, else "".
 - Presence only. Do NOT judge merits. Do NOT compute effort caps or date gaps; just report numbers and normalized dates.
 - NEVER invent a name, number, or date. Use null/"" when not stated.
+- The "note" field on any item is ONLY for a brief, neutral clarification when that element is MISSING or ambiguous. NEVER put merit, eligibility, or policy judgments in a note (for example, do NOT write "above the 25% limit", "exceeds the cap", "may not qualify", "significant salary source"). Those determinations are made downstream in code, not by you. Leave notes empty for elements that are clearly present.
 - No commentary, reasoning, or explanation of any kind outside the JSON. Do NOT think out loud. Your entire response must start with { and end with } and contain nothing else.
 
 Submission:
