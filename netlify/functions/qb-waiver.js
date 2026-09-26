@@ -133,7 +133,13 @@ exports.handler = async (event) => {
       if (id === undefined && cd.data && cd.data[0] && cd.data[0][String(F.RECORD_ID)]) {
         id = cd.data[0][String(F.RECORD_ID)].value; // fallback if metadata shape differs
       }
-      return ok({ logged: true, recordId: id, waiverOrdinal: waiverOrdinal, message: "Waiver logged to QuickBase (record " + id + ", waiver #" + waiverOrdinal + " this FY)." });
+      var idMsg = (id === undefined) ? "unknown" : id;
+      return ok({
+        logged: true,
+        recordId: id === undefined ? null : id,
+        waiverOrdinal: waiverOrdinal,
+        message: "Waiver logged to QuickBase (record " + idMsg + ", waiver #" + waiverOrdinal + " this FY)."
+      });
     }
 
     return fail(400, { error: "Unknown mode; use 'count' or 'log'." });
