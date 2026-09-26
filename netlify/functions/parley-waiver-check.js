@@ -38,13 +38,14 @@ Do NOT compute completeness - the application does that.
 Extract these facts (stated only; null/empty if not stated; NEVER guess):
   proposed_pi, dlc, sponsor, proposal_title, working_with_pi, proposal_period,
   salary_support (the salary support the proposed PI/Co-PI would receive from THIS proposal, e.g. "3 months per year" or "2 summer months"; this is NOT the total budget or the amount to MIT; "" if not stated),
-  effort_percent (NUMBER or null), prior_requests (NUMBER or null), prior_awarded (NUMBER or null),
+  effort_percent (the proposed PI's effort as a NUMBER, ONLY if a percentage or person-months figure is EXPLICITLY stated in the request or budget; do NOT infer or estimate it from the award mechanism or from general knowledge - if the budget gives only dollars and no effort figure, effort_percent MUST be null), prior_requests (NUMBER or null), prior_awarded (NUMBER or null),
   proposal_start_date (the proposal's project start date, normalized to YYYY-MM-DD if determinable, else ""),
   faculty_start_date (the researcher's official MIT faculty start date, normalized to YYYY-MM-DD if determinable, else ""),
   status_label (for the emeritus/incoming types, the researcher's stated status term such as "post-tenure", "emeritus", "retired", or "incoming faculty"; "" for standard),
   reason_summary (one concise sentence stating why PI status is warranted or the researcher's role/expertise on the project, drawn from the request; "" if not stated).
-  is_postdoc (true if the researcher is described as a postdoc / postdoctoral associate / postdoctoral fellow, otherwise false).
-  call_postdoc_note (if the proposal names a funding mechanism that is specifically a POSTDOCTORAL career-transition / mentored award - e.g. NIH K99/R00, NIH F32 or other F-series, NIH K-series career awards, NSF postdoctoral fellowship - OR the text says the call requires a postdoc, name that mechanism briefly here, e.g. "NIH K99/R00 (postdoc career-transition award)"; otherwise "").
+  cap_exception_reason (if the request acknowledges that salary coverage or effort EXCEEDS the usual 25% limit and gives a justification for the exception, capture that justification here, e.g. "the funding continues the researcher's existing Gates Foundation effort"; otherwise "").
+  is_postdoc (true if the text anywhere indicates the researcher is or has been a postdoc / postdoctoral associate / postdoctoral fellow - e.g. "has been a postdoc", "postdoctoral" - otherwise false; check the career-trajectory and reason text carefully, this is often stated there).
+  call_postdoc_note (if the proposal names a funding mechanism that is specifically a POSTDOCTORAL career-transition / mentored award - e.g. NIH K99/R00, NIH F32 or other F-series, NIH K-series career awards, NSF postdoctoral fellowship - OR the text says the call requires a postdoc, name that mechanism briefly here, e.g. "NIH K99/R00 (postdoc career-transition award)"; otherwise "". ALWAYS set this whenever "K99", "R00", "K99/R00", an NIH F- or K-series award, or a named postdoctoral fellowship appears anywhere in the request.
 Normalize dates only; do NOT compute any interval or gap between them - the application does that.
 
 Return ONLY valid JSON, no preamble:
@@ -77,7 +78,7 @@ Return ONLY valid JSON, no preamble:
       "proposal_period": "", "salary_support": "",
       "effort_percent": null, "prior_requests": null, "prior_awarded": null,
       "proposal_start_date": "", "faculty_start_date": "",
-      "status_label": "", "reason_summary": "", "is_postdoc": false, "call_postdoc_note": ""
+      "status_label": "", "reason_summary": "", "cap_exception_reason": "", "is_postdoc": false, "call_postdoc_note": ""
     }
   }
 }
