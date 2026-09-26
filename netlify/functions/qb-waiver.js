@@ -133,12 +133,16 @@ exports.handler = async (event) => {
       if (id === undefined && cd.data && cd.data[0] && cd.data[0][String(F.RECORD_ID)]) {
         id = cd.data[0][String(F.RECORD_ID)].value; // fallback if metadata shape differs
       }
-      var idMsg = (id === undefined) ? "unknown" : id;
+      // Report success by KC# / waiver ordinal - the useful, reliable identifiers -
+      // rather than QuickBase's internal numeric record ID, whose extraction has proven unreliable
+      // and which isn't actionable information anyway.
+      var kcLabel = (v.kc_number !== undefined && v.kc_number !== null && String(v.kc_number) !== "")
+        ? ("KC# " + v.kc_number) : "this waiver";
       return ok({
         logged: true,
         recordId: id === undefined ? null : id,
         waiverOrdinal: waiverOrdinal,
-        message: "Waiver logged to QuickBase (record " + idMsg + ", waiver #" + waiverOrdinal + " this FY)."
+        message: "Logged " + kcLabel + " to QuickBase (waiver #" + waiverOrdinal + " this FY)."
       });
     }
 
