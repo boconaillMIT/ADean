@@ -56,7 +56,7 @@
   </style>
 </head>
 <body>
-  <h1>SoE Request Pre-Check <span style="color:var(--muted);font-size:11px;font-weight:normal;">v2026-09-26b</span></h1>
+  <h1>SoE Request Pre-Check <span style="color:var(--muted);font-size:11px;font-weight:normal;">v2026-09-26c</span></h1>
   <details id="pasteBox">
     <summary>Paste PDF / extra text (optional)</summary>
     <textarea id="pastedText" rows="6" placeholder="Paste the PDF text or any extra request content here. It will be included in the check."></textarea>
@@ -239,7 +239,10 @@
         "<input class='cc' id='kerbField' type='text' placeholder='e.g. eliz' style='width:auto; display:inline-block; min-width:120px;'/></div>" +
         "<button id='checkLimitBtn' class='secondary'>Check FY waiver count</button>" +
         "<div id='limitResult'></div>";
-      return "<h2>Proposal Waiver Request</h2>" + v + fieldListFromKeys(keys, items, []) + flag + limitUI;
+      var extractedKerb = (w.values && w.values.kerberos) ? escapeHtml(String(w.values.kerberos)) : "";
+      limitUI = limitUI.replace("id='kerbField' type='text'", "id='kerbField' type='text' value='" + extractedKerb + "'");
+      return "<h2>Proposal Waiver Request</h2>" + v + fieldListFromKeys(keys, items, []) + flag + limitUI +
+        (extractedKerb ? "<div class='note' style='margin-top:-6px;'>Kerberos auto-filled from the request - verify before using.</div>" : "");
     }
 
     // ---- one-time PI (requester-type aware) ----
@@ -356,7 +359,9 @@
 
     // ---- waiver approval (reply-all, native quoting + Outlook signature) ----
     function draftWaiverApproval() {
-      var items = (lastResult && lastResult.waiver && lastResult.waiver.items) || {};
+      var waiverObj = (lastResult && lastResult.waiver) || {};
+      var items = waiverObj.items || {};
+      items.__kerb = (waiverObj.values && waiverObj.values.kerberos) || "";
       var ras = items.ras_contact || {};
       var caName = ras.value || "";
       var caMatch = matchCA(caName);
@@ -389,7 +394,9 @@
         "<input class='cc' id='ccField' type='text' readonly value='" + ccList.join("; ") + "' />" +
         "<button id='copyCcBtn' class='secondary'>Copy CC addresses</button>" +
         "<div style='margin-top:6px;'>PI Kerberos (for QB log): " +
-        "<input class='cc' id='approveKerbField' type='text' placeholder='e.g. eliz' style='width:auto; display:inline-block; min-width:120px;'/></div>" +
+        "<input class='cc' id='approveKerbField' type='text' placeholder='e.g. eliz' value='" +
+        ((items.__kerb) ? escapeHtml(String(items.__kerb)) : "") +
+        "' style='width:auto; display:inline-block; min-width:120px;'/></div>" +
         "<button id='openBtn'>Open reply-all &amp; log to QB</button>" +
         "<div id='approveLogResult'></div>";
 
