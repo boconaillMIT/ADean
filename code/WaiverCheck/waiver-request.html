@@ -112,11 +112,21 @@
     <label>PI Name<span class="req">*</span></label>
     <input type="text" id="piName" required placeholder="e.g. Jane Smith">
 
+    <label>PI Kerberos Username<span class="req">*</span>
+      <span class="hint">Used to reliably match this PI over time, since name spellings can drift</span>
+    </label>
+    <input type="text" id="piKerberos" required placeholder="e.g. jsmith" pattern="[A-Za-z0-9_.\-]+">
+
     <label>Project Title<span class="req">*</span></label>
     <input type="text" id="projectTitle" required>
 
     <label>Sponsor Name<span class="req">*</span></label>
     <input type="text" id="sponsorName" required placeholder="e.g. NSF, DoD, industry sponsor name">
+
+    <label>KC Number
+      <span class="hint">If available — leave blank if not yet assigned</span>
+    </label>
+    <input type="text" id="kcNumber" placeholder="e.g. 12345.00">
 
     <div class="row2">
       <div>
@@ -179,8 +189,10 @@ let lastFlag = null;
 function fieldValues() {
   return {
     piName: document.getElementById("piName").value.trim(),
+    piKerberos: document.getElementById("piKerberos").value.trim(),
     projectTitle: document.getElementById("projectTitle").value.trim(),
     sponsorName: document.getElementById("sponsorName").value.trim(),
+    kcNumber: document.getElementById("kcNumber").value.trim(),
     dlc: document.getElementById("dlc").value.trim(),
     dueDate: document.getElementById("dueDate").value,
     rasContact: document.getElementById("rasContact").value.trim(),
@@ -234,8 +246,10 @@ function showReview(v, flag) {
   reviewList.innerHTML = "";
   const rows = [
     ["PI Name", v.piName],
+    ["PI Kerberos", v.piKerberos],
     ["Project Title", v.projectTitle],
     ["Sponsor Name", v.sponsorName],
+    ["KC Number", v.kcNumber || "(not yet assigned)"],
     ["DLC", v.dlc],
     ["Actual Proposal Due Date", v.dueDate],
     ["RAS Contact", v.rasContact],
@@ -275,8 +289,10 @@ document.getElementById("sendBtn").addEventListener("click", () => {
   const subject = `Proposal Waiver Request: ${v.projectTitle} — ${v.piName}`;
   const bodyLines = [
     `PI Name: ${v.piName}`,
+    `PI Kerberos: ${v.piKerberos}`,
     `Project Title: ${v.projectTitle}`,
     `Sponsor Name: ${v.sponsorName}`,
+    `KC Number: ${v.kcNumber || "(not yet assigned)"}`,
     `DLC: ${v.dlc}`,
     `Actual Proposal Due Date: ${v.dueDate}`,
     `RAS Contact: ${v.rasContact}`,
