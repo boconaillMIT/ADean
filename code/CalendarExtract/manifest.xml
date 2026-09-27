@@ -1,0 +1,132 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  Waiver Pre-Check — Outlook add-in manifest (XML / add-in manifest).
+  Works in new Outlook for Windows, classic Outlook, Outlook on the web, and Mac.
+
+  CHANGE LOG:
+    1.0.1.0 (2026-09-23) — Added "Email to Calendar" button (calendar.html,
+                           function parley-calendar-extract). Waiver button unchanged.
+
+  BEFORE SIDELOADING:
+    1. Replace every occurrence of  OLD.netlify.app  with your Netlify subdomain.
+    2. Host waiver.html and calendar.html at the site root and the functions at
+       /.netlify/functions/parley-waiver-check and
+       /.netlify/functions/parley-calendar-extract
+    3. Add icon PNGs (16, 32, 64, 80, 128 px) at the site root, or point these
+       URLs at any resolvable HTTPS PNGs of those sizes.
+    4. (Optional) Generate a fresh GUID for <Id> — any valid GUID works.
+-->
+<OfficeApp
+  xmlns="http://schemas.microsoft.com/office/appforoffice/1.1"
+  xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+  xmlns:bt="http://schemas.microsoft.com/office/officeappbasictypes/1.0"
+  xsi:type="MailApp">
+
+  <Id>4b6c2e1a-9f3d-4c7a-8e21-7c1a9f0d0001</Id>
+  <Version>1.0.1.0</Version>
+  <ProviderName>MIT School of Engineering</ProviderName>
+  <DefaultLocale>en-US</DefaultLocale>
+  <DisplayName DefaultValue="Waiver Pre-Check"/>
+  <Description DefaultValue="Checks a Proposal Waiver Request against the SOE-research rubric via Parley, and turns events in an email into calendar entries."/>
+  <IconUrl DefaultValue="https://waivercheck.netlify.app/icon-64.png"/>
+  <HighResolutionIconUrl DefaultValue="https://waivercheck.netlify.app/icon-128.png"/>
+  <SupportUrl DefaultValue="https://waivercheck.netlify.app/"/>
+
+  <Hosts>
+    <Host Name="Mailbox"/>
+  </Hosts>
+
+  <Requirements>
+    <Sets>
+      <Set Name="Mailbox" MinVersion="1.3"/>
+    </Sets>
+  </Requirements>
+
+  <FormSettings>
+    <Form xsi:type="ItemRead">
+      <DesktopSettings>
+        <SourceLocation DefaultValue="https://waivercheck.netlify.app/waiver.html"/>
+        <RequestedHeight>280</RequestedHeight>
+      </DesktopSettings>
+    </Form>
+  </FormSettings>
+
+  <Permissions>ReadWriteItem</Permissions>
+
+  <Rule xsi:type="RuleCollection" Mode="Or">
+    <Rule xsi:type="ItemIs" ItemType="Message" FormType="Read"/>
+  </Rule>
+
+  <DisableEntityHighlighting>false</DisableEntityHighlighting>
+
+  <VersionOverrides xmlns="http://schemas.microsoft.com/office/mailappversionoverrides" xsi:type="VersionOverridesV1_0">
+    <Requirements>
+      <bt:Sets DefaultMinVersion="1.3">
+        <bt:Set Name="Mailbox"/>
+      </bt:Sets>
+    </Requirements>
+    <Hosts>
+      <Host xsi:type="MailHost">
+        <DesktopFormFactor>
+          <ExtensionPoint xsi:type="MessageReadCommandSurface">
+            <OfficeTab id="TabDefault">
+              <Group id="waiverGroup">
+                <Label resid="groupLabel"/>
+                <Control xsi:type="Button" id="waiverButton">
+                  <Label resid="btnLabel"/>
+                  <Supertip>
+                    <Title resid="btnLabel"/>
+                    <Description resid="btnTip"/>
+                  </Supertip>
+                  <Icon>
+                    <bt:Image size="16" resid="icon16"/>
+                    <bt:Image size="32" resid="icon32"/>
+                    <bt:Image size="80" resid="icon80"/>
+                  </Icon>
+                  <Action xsi:type="ShowTaskpane">
+                    <SourceLocation resid="taskpaneUrl"/>
+                  </Action>
+                </Control>
+                <Control xsi:type="Button" id="calendarButton">
+                  <Label resid="calBtnLabel"/>
+                  <Supertip>
+                    <Title resid="calBtnLabel"/>
+                    <Description resid="calBtnTip"/>
+                  </Supertip>
+                  <Icon>
+                    <bt:Image size="16" resid="icon16"/>
+                    <bt:Image size="32" resid="icon32"/>
+                    <bt:Image size="80" resid="icon80"/>
+                  </Icon>
+                  <Action xsi:type="ShowTaskpane">
+                    <SourceLocation resid="calendarUrl"/>
+                  </Action>
+                </Control>
+              </Group>
+            </OfficeTab>
+          </ExtensionPoint>
+        </DesktopFormFactor>
+      </Host>
+    </Hosts>
+    <Resources>
+      <bt:Images>
+        <bt:Image id="icon16" DefaultValue="https://waivercheck.netlify.app/icon-16.png"/>
+        <bt:Image id="icon32" DefaultValue="https://waivercheck.netlify.app/icon-32.png"/>
+        <bt:Image id="icon80" DefaultValue="https://waivercheck.netlify.app/icon-80.png"/>
+      </bt:Images>
+      <bt:Urls>
+        <bt:Url id="taskpaneUrl" DefaultValue="https://waivercheck.netlify.app/waiver.html"/>
+        <bt:Url id="calendarUrl" DefaultValue="https://waivercheck.netlify.app/calendar.html"/>
+      </bt:Urls>
+      <bt:ShortStrings>
+        <bt:String id="groupLabel" DefaultValue="Waiver Tools"/>
+        <bt:String id="btnLabel" DefaultValue="Waiver Pre-Check"/>
+        <bt:String id="calBtnLabel" DefaultValue="Email to Calendar"/>
+      </bt:ShortStrings>
+      <bt:LongStrings>
+        <bt:String id="btnTip" DefaultValue="Check this Proposal Waiver Request against the SOE-research rubric."/>
+        <bt:String id="calBtnTip" DefaultValue="Find events in this email and open them as calendar entries."/>
+      </bt:LongStrings>
+    </Resources>
+  </VersionOverrides>
+</OfficeApp>

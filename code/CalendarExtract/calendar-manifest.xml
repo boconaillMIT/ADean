@@ -1,0 +1,113 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  Email to Calendar — Outlook add-in manifest (XML / add-in manifest).
+  Standalone add-in, separate from Research Tools, so people can install one without the other.
+  Works in new Outlook for Windows, classic Outlook, Outlook on the web, and Mac.
+
+  CHANGE LOG:
+    1.0.0.0 (2026-09-23) — First release. New-Outlook port of the VBA CreateCalendarFromEmail macro.
+
+  REQUIRES on the host site:
+    - calendar.html at the site root
+    - /.netlify/functions/parley-calendar-extract
+    - icon PNGs (16, 32, 64, 80, 128 px) at the site root
+
+  NOTE: <Id> must stay different from the Research Tools manifest, or Outlook treats them
+  as the same add-in and one replaces the other.
+-->
+<OfficeApp
+  xmlns="http://schemas.microsoft.com/office/appforoffice/1.1"
+  xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+  xmlns:bt="http://schemas.microsoft.com/office/officeappbasictypes/1.0"
+  xsi:type="MailApp">
+
+  <Id>2e69ef80-88a4-4fcc-91e2-c5328fccfaf9</Id>
+  <Version>1.0.0.0</Version>
+  <ProviderName>MIT School of Engineering</ProviderName>
+  <DefaultLocale>en-US</DefaultLocale>
+  <DisplayName DefaultValue="Email to Calendar"/>
+  <Description DefaultValue="Finds events in an email using Parley and opens them as prefilled calendar entries."/>
+  <IconUrl DefaultValue="https://waivercheck.netlify.app/icon-64.png"/>
+  <HighResolutionIconUrl DefaultValue="https://waivercheck.netlify.app/icon-128.png"/>
+  <SupportUrl DefaultValue="https://waivercheck.netlify.app/"/>
+
+  <Hosts>
+    <Host Name="Mailbox"/>
+  </Hosts>
+
+  <Requirements>
+    <Sets>
+      <Set Name="Mailbox" MinVersion="1.3"/>
+    </Sets>
+  </Requirements>
+
+  <FormSettings>
+    <Form xsi:type="ItemRead">
+      <DesktopSettings>
+        <SourceLocation DefaultValue="https://waivercheck.netlify.app/calendar.html"/>
+        <RequestedHeight>280</RequestedHeight>
+      </DesktopSettings>
+    </Form>
+  </FormSettings>
+
+  <Permissions>ReadWriteItem</Permissions>
+
+  <Rule xsi:type="RuleCollection" Mode="Or">
+    <Rule xsi:type="ItemIs" ItemType="Message" FormType="Read"/>
+  </Rule>
+
+  <DisableEntityHighlighting>false</DisableEntityHighlighting>
+
+  <VersionOverrides xmlns="http://schemas.microsoft.com/office/mailappversionoverrides" xsi:type="VersionOverridesV1_0">
+    <Requirements>
+      <bt:Sets DefaultMinVersion="1.3">
+        <bt:Set Name="Mailbox"/>
+      </bt:Sets>
+    </Requirements>
+    <Hosts>
+      <Host xsi:type="MailHost">
+        <DesktopFormFactor>
+          <ExtensionPoint xsi:type="MessageReadCommandSurface">
+            <OfficeTab id="TabDefault">
+              <Group id="calendarGroup">
+                <Label resid="calGroupLabel"/>
+                <Control xsi:type="Button" id="calendarButton">
+                  <Label resid="calBtnLabel"/>
+                  <Supertip>
+                    <Title resid="calBtnLabel"/>
+                    <Description resid="calBtnTip"/>
+                  </Supertip>
+                  <Icon>
+                    <bt:Image size="16" resid="icon16"/>
+                    <bt:Image size="32" resid="icon32"/>
+                    <bt:Image size="80" resid="icon80"/>
+                  </Icon>
+                  <Action xsi:type="ShowTaskpane">
+                    <SourceLocation resid="calendarUrl"/>
+                  </Action>
+                </Control>
+              </Group>
+            </OfficeTab>
+          </ExtensionPoint>
+        </DesktopFormFactor>
+      </Host>
+    </Hosts>
+    <Resources>
+      <bt:Images>
+        <bt:Image id="icon16" DefaultValue="https://waivercheck.netlify.app/icon-16.png"/>
+        <bt:Image id="icon32" DefaultValue="https://waivercheck.netlify.app/icon-32.png"/>
+        <bt:Image id="icon80" DefaultValue="https://waivercheck.netlify.app/icon-80.png"/>
+      </bt:Images>
+      <bt:Urls>
+        <bt:Url id="calendarUrl" DefaultValue="https://waivercheck.netlify.app/calendar.html"/>
+      </bt:Urls>
+      <bt:ShortStrings>
+        <bt:String id="calGroupLabel" DefaultValue="Calendar Tools"/>
+        <bt:String id="calBtnLabel" DefaultValue="Email to Calendar"/>
+      </bt:ShortStrings>
+      <bt:LongStrings>
+        <bt:String id="calBtnTip" DefaultValue="Find events in this email and open them as calendar entries."/>
+      </bt:LongStrings>
+    </Resources>
+  </VersionOverrides>
+</OfficeApp>
