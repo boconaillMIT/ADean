@@ -1,0 +1,299 @@
+<!DOCTYPE html>
+<!--
+  Proposal Waiver Request — guided intake form
+  Part of the SOE-research waiver tooling (see waiver.html / manifest.xml)
+
+  BEFORE DEPLOYING:
+    1. Host this file on the same Netlify site as waiver.html (waivercheck.netlify.app)
+       so it shares styling/URL conventions, or wherever you'd like FOs to bookmark.
+    2. Deploy the paired function at
+       /.netlify/functions/parley-waiver-bad-faith  (see parley-waiver-bad-faith.js)
+    3. Update SOE_RESEARCH_ADDRESS below if the list address ever changes.
+    4. This form does NOT send email itself — it builds a mailto: link and lets the
+       FO's own Outlook send it, so the submission genuinely comes from them.
+-->
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Proposal Waiver Request</title>
+<style>
+  :root {
+    --mit-red: #A31F34;
+    --ink: #1B1B1B;
+    --muted: #5B5B5B;
+    --border: #D8D8D8;
+    --bg: #FAFAFA;
+    --ok: #1E7B34;
+    --warn: #B8860B;
+  }
+  * { box-sizing: border-box; }
+  body {
+    font-family: -apple-system, "Segoe UI", Helvetica, Arial, sans-serif;
+    background: var(--bg);
+    color: var(--ink);
+    margin: 0;
+    padding: 24px 16px 64px;
+  }
+  .wrap { max-width: 640px; margin: 0 auto; }
+  h1 { font-size: 1.4rem; margin-bottom: 4px; }
+  .sub { color: var(--muted); font-size: 0.92rem; margin-bottom: 24px; line-height: 1.4; }
+  .card {
+    background: #fff;
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    padding: 20px 22px;
+    margin-bottom: 16px;
+  }
+  label {
+    display: block;
+    font-weight: 600;
+    font-size: 0.88rem;
+    margin: 14px 0 4px;
+  }
+  label .req { color: var(--mit-red); margin-left: 2px; }
+  label .hint { font-weight: 400; color: var(--muted); display: block; font-size: 0.8rem; margin-top: 1px; }
+  input[type=text], input[type=email], input[type=date], textarea {
+    width: 100%;
+    padding: 9px 10px;
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    font-size: 0.95rem;
+    font-family: inherit;
+  }
+  textarea { min-height: 80px; resize: vertical; }
+  input:invalid:not(:placeholder-shown) { border-color: var(--mit-red); }
+  .row2 { display: grid; grid-template-columns: 1fr 1fr; gap: 0 14px; }
+  button {
+    background: var(--mit-red);
+    color: #fff;
+    border: none;
+    padding: 11px 20px;
+    border-radius: 6px;
+    font-size: 0.95rem;
+    font-weight: 600;
+    cursor: pointer;
+    margin-top: 18px;
+  }
+  button:disabled { background: #C9A0A8; cursor: default; }
+  button.secondary {
+    background: #fff;
+    color: var(--ink);
+    border: 1px solid var(--border);
+  }
+  #status { margin-top: 14px; font-size: 0.9rem; display: none; }
+  #status.checking { color: var(--muted); display: block; }
+  #status.flagged { color: var(--warn); display: block; font-weight: 600; }
+  #status.clear { color: var(--ok); display: block; font-weight: 600; }
+  #reviewCard { display: none; }
+  #reviewCard dt { font-weight: 600; font-size: 0.82rem; color: var(--muted); margin-top: 10px; }
+  #reviewCard dd { margin: 2px 0 0; font-size: 0.95rem; }
+  .flagNote {
+    background: #FFF7E6;
+    border: 1px solid #F0D58C;
+    border-radius: 6px;
+    padding: 10px 12px;
+    font-size: 0.85rem;
+    margin-top: 10px;
+  }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <h1>Proposal Waiver Request</h1>
+  <p class="sub">
+    Fill in every field below — all seven are required by the SOE-research waiver
+    rubric, and RAS needs each one to process your request without a back-and-forth.
+    When you're ready, this will open a pre-filled email in your own Outlook for you
+    to send to soe-research@mit.edu.
+  </p>
+
+  <form id="waiverForm" class="card" novalidate>
+    <label>PI Name<span class="req">*</span></label>
+    <input type="text" id="piName" required placeholder="e.g. Jane Smith">
+
+    <label>Project Title<span class="req">*</span></label>
+    <input type="text" id="projectTitle" required>
+
+    <label>Sponsor Name<span class="req">*</span></label>
+    <input type="text" id="sponsorName" required placeholder="e.g. NSF, DoD, industry sponsor name">
+
+    <div class="row2">
+      <div>
+        <label>DLC<span class="req">*</span>
+          <span class="hint">Department/Lab/Center</span>
+        </label>
+        <input type="text" id="dlc" required placeholder="e.g. AeroAstro">
+      </div>
+      <div>
+        <label>Actual Proposal Due Date<span class="req">*</span></label>
+        <input type="date" id="dueDate" required>
+      </div>
+    </div>
+
+    <label>RAS Contact<span class="req">*</span>
+      <span class="hint">The RAS staff member you've been working with</span>
+    </label>
+    <input type="text" id="rasContact" required>
+
+    <label>Reason the Proposal is Late<span class="req">*</span>
+      <span class="hint">Any stated reason is accepted — this just can't be left blank</span>
+    </label>
+    <textarea id="reason" required></textarea>
+
+    <hr style="border:none;border-top:1px solid var(--border);margin:18px 0 0;">
+
+    <label>Your Name<span class="req">*</span></label>
+    <input type="text" id="fromName" required>
+
+    <label>Your MIT Email<span class="req">*</span></label>
+    <input type="email" id="fromEmail" required placeholder="you@mit.edu">
+
+    <button type="submit" id="reviewBtn">Review Submission</button>
+    <div id="status"></div>
+  </form>
+
+  <div class="card" id="reviewCard">
+    <h2 style="margin-top:0;font-size:1.1rem;">Review before sending</h2>
+    <dl id="reviewList"></dl>
+    <div id="flagNoteWrap"></div>
+    <button id="sendBtn">Open Email to Send</button>
+    <button class="secondary" id="backBtn" type="button">Back to Edit</button>
+  </div>
+</div>
+
+<script>
+const SOE_RESEARCH_ADDRESS = "soe-research@mit.edu";
+const BAD_FAITH_ENDPOINT = "https://waivercheck.netlify.app/.netlify/functions/parley-waiver-bad-faith";
+
+const form = document.getElementById("waiverForm");
+const statusEl = document.getElementById("status");
+const reviewCard = document.getElementById("reviewCard");
+const reviewList = document.getElementById("reviewList");
+const flagNoteWrap = document.getElementById("flagNoteWrap");
+const reviewBtn = document.getElementById("reviewBtn");
+
+let lastFieldValues = null;
+let lastFlag = null;
+
+function fieldValues() {
+  return {
+    piName: document.getElementById("piName").value.trim(),
+    projectTitle: document.getElementById("projectTitle").value.trim(),
+    sponsorName: document.getElementById("sponsorName").value.trim(),
+    dlc: document.getElementById("dlc").value.trim(),
+    dueDate: document.getElementById("dueDate").value,
+    rasContact: document.getElementById("rasContact").value.trim(),
+    reason: document.getElementById("reason").value.trim(),
+    fromName: document.getElementById("fromName").value.trim(),
+    fromEmail: document.getElementById("fromEmail").value.trim()
+  };
+}
+
+form.addEventListener("submit", async (e) => {
+  e.preventDefault();
+  if (!form.checkValidity()) {
+    form.reportValidity();
+    return;
+  }
+
+  const v = fieldValues();
+  lastFieldValues = v;
+
+  reviewBtn.disabled = true;
+  statusEl.className = "checking";
+  statusEl.textContent = "Checking submission…";
+
+  let flag = { bad_faith: false, note: "" };
+  try {
+    const resp = await fetch(BAD_FAITH_ENDPOINT, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ reason: v.reason })
+    });
+    if (resp.ok) {
+      flag = await resp.json();
+    }
+  } catch (err) {
+    // Network/Parley failure: don't block the FO's submission over a check failing.
+    // Staff will still see the reason text in the email itself either way.
+    console.warn("Bad-faith check unavailable, proceeding without it:", err);
+  }
+  lastFlag = flag;
+
+  statusEl.className = flag.bad_faith ? "flagged" : "clear";
+  statusEl.textContent = flag.bad_faith
+    ? "Noted — this will be sent, but flagged for staff attention below."
+    : "Looks good.";
+
+  showReview(v, flag);
+  reviewBtn.disabled = false;
+});
+
+function showReview(v, flag) {
+  reviewList.innerHTML = "";
+  const rows = [
+    ["PI Name", v.piName],
+    ["Project Title", v.projectTitle],
+    ["Sponsor Name", v.sponsorName],
+    ["DLC", v.dlc],
+    ["Actual Proposal Due Date", v.dueDate],
+    ["RAS Contact", v.rasContact],
+    ["Reason for Lateness", v.reason],
+    ["Submitted By", `${v.fromName} <${v.fromEmail}>`]
+  ];
+  for (const [label, value] of rows) {
+    const dt = document.createElement("dt");
+    dt.textContent = label;
+    const dd = document.createElement("dd");
+    dd.textContent = value;
+    reviewList.appendChild(dt);
+    reviewList.appendChild(dd);
+  }
+
+  flagNoteWrap.innerHTML = "";
+  if (flag.bad_faith) {
+    const note = document.createElement("div");
+    note.className = "flagNote";
+    note.textContent = "Staff note: " + (flag.note || "The stated reason may need a closer look.");
+    flagNoteWrap.appendChild(note);
+  }
+
+  form.style.display = "none";
+  reviewCard.style.display = "block";
+}
+
+document.getElementById("backBtn").addEventListener("click", () => {
+  reviewCard.style.display = "none";
+  form.style.display = "block";
+});
+
+document.getElementById("sendBtn").addEventListener("click", () => {
+  const v = lastFieldValues;
+  const flag = lastFlag || { bad_faith: false };
+
+  const subject = `Proposal Waiver Request: ${v.projectTitle} — ${v.piName}`;
+  const bodyLines = [
+    `PI Name: ${v.piName}`,
+    `Project Title: ${v.projectTitle}`,
+    `Sponsor Name: ${v.sponsorName}`,
+    `DLC: ${v.dlc}`,
+    `Actual Proposal Due Date: ${v.dueDate}`,
+    `RAS Contact: ${v.rasContact}`,
+    `Reason Proposal is Late: ${v.reason}`,
+    "",
+    `Submitted by: ${v.fromName} (${v.fromEmail})`
+  ];
+  if (flag.bad_faith) {
+    bodyLines.push("", "[Note to staff: this submission was flagged by the intake tool for review of the stated reason above.]");
+  }
+
+  const mailto = `mailto:${encodeURIComponent(SOE_RESEARCH_ADDRESS)}`
+    + `?subject=${encodeURIComponent(subject)}`
+    + `&body=${encodeURIComponent(bodyLines.join("\n"))}`;
+
+  window.location.href = mailto;
+});
+</script>
+</body>
+</html>
