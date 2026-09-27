@@ -146,6 +146,15 @@
     <label>Researcher's Name<span class="req">*</span></label>
     <input type="text" id="researcherName" required>
 
+    <label>Researcher's Kerberos<span class="req">*</span>
+      <span class="hint">Used to look up prior one-time PI/Co-PI request history</span>
+    </label>
+    <div class="row2">
+      <div><input type="text" id="researcherKerberos" required placeholder="e.g. jsmith"></div>
+      <div><button type="button" id="lookupHistoryBtn" class="secondary" style="margin-top:0;width:100%;">Check Prior History</button></div>
+    </div>
+    <div id="historyResult" class="banner" style="display:none;"></div>
+
     <label>Proposal Title<span class="req">*</span></label>
     <input type="text" id="proposalTitle" required>
 
@@ -339,6 +348,51 @@ sameAsMentorBox.addEventListener("change", () => {
 });
 mentorInput.addEventListener("input", syncOversightFromMentor);
 
+const HISTORY_ENDPOINT = "https://waivercheck.netlify.app/.netlify/functions/qb-otpi-history";
+let lastHistoryText = "";
+
+document.getElementById("lookupHistoryBtn").addEventListener("click", async () => {
+  const kerbEl = document.getElementById("researcherKerberos");
+  const resultEl = document.getElementById("historyResult");
+  const kerb = kerbEl.value.trim();
+  if (!kerb) {
+    kerbEl.reportValidity();
+    return;
+  }
+  resultEl.style.display = "block";
+  resultEl.className = "banner";
+  resultEl.textContent = "Checking prior history…";
+
+  try {
+    const resp = await fetch(HISTORY_ENDPOINT, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ kerberos: kerb })
+    });
+    const data = await resp.json();
+    if (data.error || data.count === null) {
+      resultEl.className = "banner warn";
+      resultEl.textContent = "Couldn't retrieve prior history right now — you can still proceed; staff can check manually.";
+      lastHistoryText = "";
+      return;
+    }
+    if (data.count === 0) {
+      resultEl.className = "banner ok";
+      resultEl.textContent = "No prior one-time PI/Co-PI status requests found for this researcher.";
+      lastHistoryText = "No prior requests found.";
+    } else {
+      const pct = Math.round(data.successRate * 100);
+      resultEl.className = "banner ok";
+      resultEl.textContent = `${data.count} prior request(s) found — ${data.approved} approved, ${data.denied} not approved (${pct}% success rate).`;
+      lastHistoryText = `${data.count} prior request(s), ${data.approved} approved, ${data.denied} not approved (${pct}% success rate).`;
+    }
+  } catch (err) {
+    resultEl.className = "banner warn";
+    resultEl.textContent = "Couldn't retrieve prior history right now — you can still proceed; staff can check manually.";
+    lastHistoryText = "";
+  }
+});
+
 const form = document.getElementById("otpiForm");
 const reviewCard = document.getElementById("reviewCard");
 const reviewList = document.getElementById("reviewList");
@@ -399,6 +453,7 @@ function collectValues() {
     requesterType: typeSelect.value,
     dlc: g("dlc"),
     researcherName: g("researcherName"),
+    researcherKerberos: g("researcherKerberos"),
     proposalTitle: g("proposalTitle"),
     sponsor: g("sponsor"),
     dueDate: g("dueDate"),
@@ -471,6 +526,8 @@ function showReview(v, flags) {
     ["Requester Type", typeLabel(v.requesterType)],
     ["DLC", v.dlc],
     ["Researcher's Name", v.researcherName],
+    ["Researcher's Kerberos", v.researcherKerberos],
+    ["Prior PI Status History", lastHistoryText || "(not checked)"],
     ["Proposal Title", v.proposalTitle],
     ["Sponsor", v.sponsor],
     ["Proposal Due Date", v.dueDate]
@@ -541,6 +598,8 @@ document.getElementById("sendBtn").addEventListener("click", () => {
     `Requester Type: ${typeLabel(v.requesterType)}`,
     `DLC: ${v.dlc}`,
     `Researcher's Name: ${v.researcherName}`,
+    `Researcher's Kerberos: ${v.researcherKerberos}`,
+    `Prior PI Status History: ${lastHistoryText || "(not checked)"}`,
     `Proposal Title: ${v.proposalTitle}`,
     `Sponsor: ${v.sponsor}`,
     `Proposal Due Date: ${v.dueDate}`,
