@@ -56,7 +56,7 @@
   </style>
 </head>
 <body>
-  <h1>SoE Request Pre-Check <span style="color:var(--muted);font-size:11px;font-weight:normal;">v2026-09-26i</span></h1>
+  <h1>SoE Request Pre-Check <span style="color:var(--muted);font-size:11px;font-weight:normal;">v2026-09-26j</span></h1>
   <details id="pasteBox">
     <summary>Paste PDF / extra text (optional)</summary>
     <textarea id="pastedText" rows="6" placeholder="Paste the PDF text or any extra request content here. It will be included in the check."></textarea>
@@ -294,16 +294,26 @@
           var box = document.getElementById("milestoneNotice");
           if (!x.ok || !box) return;
           var nextOrdinal = x.d.count + 1;
-          if (nextOrdinal !== 3) return; // only the 3rd gets the "final one" disclosure
+          if (nextOrdinal < 3) return; // 1st/2nd: no milestone language needed
           var piName = (waiverObj.values && waiverObj.values.pi) ? waiverObj.values.pi : "the PI";
           var fyShort = "FY" + String(x.d.fy).slice(-2);
-          var sentence = "Please note that this is the 3rd waiver request for " + escapeHtml(piName) +
-            " and will be the final one for " + fyShort + " without an explicit Dean/SOE-approved exception.<br><br>";
+          var sentence, noticeHtml;
+          if (nextOrdinal === 3) {
+            sentence = "Please note that this is the 3rd waiver request for " + escapeHtml(piName) +
+              " and will be the final one for " + fyShort + " without an explicit Dean/SOE-approved exception.<br><br>";
+            noticeHtml = "<div class='flag warn'>This will be waiver #3 of 3 for " + escapeHtml(piName) +
+              " this fiscal year - the final one before a Dean/SOE exception is required.</div>";
+          } else {
+            // 4th or beyond: name the number and state plainly that this is a rare, approved exception.
+            sentence = "<b>Please note that this is waiver request #" + nextOrdinal + " for " + escapeHtml(piName) +
+              " in " + fyShort + " - beyond the standard limit of 3 per fiscal year. This is a rare exception, approved at the Dean/SOE level.</b><br><br>";
+            noticeHtml = "<div class='flag bad'>\u26A0 This will be waiver #" + nextOrdinal + " for " + escapeHtml(piName) +
+              " this fiscal year, exceeding the standard 3-per-FY limit. The approval email will state this explicitly as a rare, Dean/SOE-approved exception.</div>";
+          }
           currentApprovalBody = APPROVAL_BODY_HTML.replace("Hi,<br><br>", "Hi,<br><br>" + sentence);
           var previewEl = document.getElementById("approvalPreviewText");
           if (previewEl) previewEl.innerHTML = currentApprovalBody;
-          box.innerHTML = "<div class='flag warn'>This will be waiver #3 of 3 for " + escapeHtml(piName) +
-            " this fiscal year - the final one before a Dean/SOE exception is required.</div>";
+          box.innerHTML = noticeHtml;
         })
         .catch(function () { /* non-critical - approval still works without the milestone check */ });
     }
