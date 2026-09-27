@@ -1,0 +1,565 @@
+<!DOCTYPE html>
+<!--
+  One-Time PI/Co-PI Status Request — guided intake form
+  Companion to waiver-request.html; part of the SOE-research tooling.
+
+  Requester-type is DECLARED by the person filling the form (dropdown), not
+  inferred by AI — this sidesteps the inference risk the Outlook add-in has
+  to manage when reading an ambiguous email. The tool just adjusts which
+  fields are required based on the declared type; a human reviewer at RAS
+  still confirms the declared type is legitimate.
+
+  Standard-track required elements (current, post mentor/mentee swap):
+    researcher_name, endorsement, reason_needed, career_trajectory,
+    mentor_relationship, proposal_title, sponsor, budget (incl. effort %),
+    salary_support, due_date, oversight_individual, research_landscape
+    (abstract stays optional)
+
+  Incoming Faculty required elements: researcher_name, proposal_title,
+    sponsor, due_date, visiting_appointment, work_authorization
+    (+ 9-month rule check: proposal start vs. faculty start date)
+
+  Emeritus required elements: researcher_name, proposal_title, sponsor,
+    due_date, emeritus_confirmation
+
+  This form does NOT send email itself — like waiver-request.html, it builds
+  a mailto: link and lets the submitter's own Outlook send it. Uploads are
+  NOT transmitted by this page (mailto can't carry attachments) — the form
+  only lists what was selected as an on-screen checklist reminder to attach
+  manually before hitting Send.
+
+  BEFORE DEPLOYING: host alongside waiver-request.html; update
+  SOE_RESEARCH_ADDRESS below if the list address ever changes.
+-->
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>One-Time PI/Co-PI Status Request</title>
+<style>
+  :root {
+    --mit-red: #A31F34;
+    --ink: #1B1B1B;
+    --muted: #5B5B5B;
+    --border: #D8D8D8;
+    --bg: #FAFAFA;
+    --ok: #1E7B34;
+    --warn: #B8860B;
+    --danger: #A31F34;
+  }
+  * { box-sizing: border-box; }
+  body {
+    font-family: -apple-system, "Segoe UI", Helvetica, Arial, sans-serif;
+    background: var(--bg);
+    color: var(--ink);
+    margin: 0;
+    padding: 24px 16px 64px;
+  }
+  .wrap { max-width: 680px; margin: 0 auto; }
+  h1 { font-size: 1.4rem; margin-bottom: 4px; }
+  h2 { font-size: 1.05rem; margin: 0 0 4px; }
+  .sub { color: var(--muted); font-size: 0.92rem; margin-bottom: 24px; line-height: 1.4; }
+  .card {
+    background: #fff;
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    padding: 20px 22px;
+    margin-bottom: 16px;
+  }
+  label {
+    display: block;
+    font-weight: 600;
+    font-size: 0.88rem;
+    margin: 14px 0 4px;
+  }
+  label .req { color: var(--mit-red); margin-left: 2px; }
+  label .hint { font-weight: 400; color: var(--muted); display: block; font-size: 0.8rem; margin-top: 1px; }
+  input[type=text], input[type=email], input[type=date], input[type=number], select, textarea {
+    width: 100%;
+    padding: 9px 10px;
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    font-size: 0.95rem;
+    font-family: inherit;
+  }
+  textarea { min-height: 70px; resize: vertical; }
+  .row2 { display: grid; grid-template-columns: 1fr 1fr; gap: 0 14px; }
+  fieldset { border: none; padding: 0; margin: 0; display: none; }
+  fieldset.active { display: block; }
+  legend { padding: 0; font-weight: 700; font-size: 0.95rem; margin-top: 4px; }
+  .checkline { display: flex; align-items: center; gap: 8px; margin-top: 14px; }
+  .checkline input[type=checkbox] { width: 16px; height: 16px; }
+  .checkline label { margin: 0; font-weight: 600; font-size: 0.88rem; }
+  button {
+    background: var(--mit-red);
+    color: #fff;
+    border: none;
+    padding: 11px 20px;
+    border-radius: 6px;
+    font-size: 0.95rem;
+    font-weight: 600;
+    cursor: pointer;
+    margin-top: 18px;
+  }
+  button.secondary { background: #fff; color: var(--ink); border: 1px solid var(--border); }
+  #reviewCard, #flagBanners { display: none; }
+  #reviewCard dt { font-weight: 600; font-size: 0.82rem; color: var(--muted); margin-top: 10px; }
+  #reviewCard dd { margin: 2px 0 0; font-size: 0.95rem; white-space: pre-wrap; }
+  .banner {
+    border-radius: 6px;
+    padding: 10px 12px;
+    font-size: 0.85rem;
+    margin-top: 10px;
+    border: 1px solid transparent;
+  }
+  .banner.warn { background: #FFF7E6; border-color: #F0D58C; color: #6B5000; }
+  .banner.danger { background: #FBEAEC; border-color: #E9AEB6; color: var(--danger); }
+  .banner.ok { background: #EAF6EC; border-color: #B9DEC0; color: var(--ok); }
+  #checklist { list-style: none; padding: 0; margin: 8px 0 0; }
+  #checklist li { padding: 6px 0; border-bottom: 1px solid #EEE; font-size: 0.9rem; }
+  #checklist li:last-child { border-bottom: none; }
+  .fileRow { margin-top: 10px; }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <h1>One-Time PI/Co-PI Status Request</h1>
+  <p class="sub">
+    Choose the requester type first — it determines which fields are required.
+    All required fields must be filled in before you can review and send.
+  </p>
+
+  <form id="otpiForm" class="card" novalidate>
+    <label>Requester Type<span class="req">*</span></label>
+    <select id="requesterType" required>
+      <option value="">Select…</option>
+      <option value="standard">Standard (developing researcher)</option>
+      <option value="incoming">Incoming Faculty (visiting appt + work auth)</option>
+      <option value="emeritus">Emeritus / Post-Retirement</option>
+    </select>
+
+    <label>DLC<span class="req">*</span>
+      <span class="hint">Department/Lab/Center</span>
+    </label>
+    <input type="text" id="dlc" required>
+
+    <label>Researcher's Name<span class="req">*</span></label>
+    <input type="text" id="researcherName" required>
+
+    <label>Proposal Title<span class="req">*</span></label>
+    <input type="text" id="proposalTitle" required>
+
+    <label>Sponsor<span class="req">*</span></label>
+    <input type="text" id="sponsor" required>
+
+    <label>Proposal Due Date<span class="req">*</span></label>
+    <input type="date" id="dueDate" required>
+
+    <!-- STANDARD TRACK -->
+    <fieldset id="fs-standard">
+      <legend>Standard Track — Full Packet</legend>
+
+      <label>Department/Division Head or Lab Director Endorsement<span class="req">*</span>
+        <span class="hint">Name of the endorsing head/director</span>
+      </label>
+      <input type="text" id="endorsement" data-req-standard>
+
+      <label>Reason PI/Co-PI Status Is Needed<span class="req">*</span></label>
+      <textarea id="reasonNeeded" data-req-standard></textarea>
+
+      <label>Career Trajectory<span class="req">*</span>
+        <span class="hint">Timeline/plan toward promotion or advancement</span>
+      </label>
+      <textarea id="careerTrajectory" data-req-standard></textarea>
+
+      <label>Mentor/Mentee Relationship<span class="req">*</span>
+        <span class="hint">Name the identified mentor/advisor — the full mentoring plan is not required at submission, only that the relationship exists</span>
+      </label>
+      <input type="text" id="mentorRelationship" data-req-standard>
+
+      <div class="row2">
+        <div>
+          <label>Proposed Effort on Project (%)<span class="req">*</span></label>
+          <input type="number" id="effortPercent" min="0" max="100" data-req-standard>
+        </div>
+        <div>
+          <label>Level of Salary Support<span class="req">*</span></label>
+          <input type="text" id="salarySupport" data-req-standard placeholder="e.g. 1 month/year">
+        </div>
+      </div>
+
+      <label>Budget Notes<span class="req">*</span>
+        <span class="hint">Confirms scope/dollars are small; effort % above must comply with the ≤25% expectation</span>
+      </label>
+      <textarea id="budget" data-req-standard></textarea>
+
+      <label>Oversight Individual<span class="req">*</span>
+        <span class="hint">Faculty member, Senior Research Scientist, or Principal Research Scientist providing oversight</span>
+      </label>
+      <input type="text" id="oversightIndividual" data-req-standard>
+
+      <label>Research Landscape Comment<span class="req">*</span>
+        <span class="hint">Are others working in this area; why this person is uniquely positioned</span>
+      </label>
+      <textarea id="researchLandscape" data-req-standard></textarea>
+
+      <label>One-Page Abstract
+        <span class="hint">Optional — attach as a file if available (see upload section below)</span>
+      </label>
+      <input type="text" id="abstractNote" placeholder="e.g. see attached, or leave blank">
+
+      <div class="checkline">
+        <input type="checkbox" id="isPostdoc">
+        <label for="isPostdoc">The proposed PI/Co-PI is a postdoc</label>
+      </div>
+      <div id="postdocMechWrap" style="display:none;">
+        <label>Postdoc-Specific Funding Mechanism (if applicable)
+          <span class="hint">e.g. NIH K99/R00 — leave blank if none applies</span>
+        </label>
+        <input type="text" id="postdocMechanism">
+      </div>
+    </fieldset>
+
+    <!-- INCOMING FACULTY TRACK -->
+    <fieldset id="fs-incoming">
+      <legend>Incoming Faculty Track</legend>
+
+      <label>Visiting Appointment Confirmation<span class="req">*</span>
+        <span class="hint">Describe or confirm the visiting appointment in place</span>
+      </label>
+      <textarea id="visitingAppointment" data-req-incoming></textarea>
+
+      <label>Work Authorization Confirmation<span class="req">*</span></label>
+      <textarea id="workAuthorization" data-req-incoming></textarea>
+
+      <div class="row2">
+        <div>
+          <label>Faculty Member's MIT Start Date<span class="req">*</span></label>
+          <input type="date" id="facultyStartDate" data-req-incoming>
+        </div>
+        <div>
+          <label>Proposal Period Start Date<span class="req">*</span></label>
+          <input type="date" id="proposalStartDate" data-req-incoming>
+        </div>
+      </div>
+    </fieldset>
+
+    <!-- EMERITUS TRACK -->
+    <fieldset id="fs-emeritus">
+      <legend>Emeritus / Post-Retirement Track</legend>
+
+      <label>Emeritus / Prior PI Status Confirmation<span class="req">*</span>
+        <span class="hint">Confirm emeritus standing and prior PI status held before retirement</span>
+      </label>
+      <textarea id="emeritusConfirmation" data-req-emeritus></textarea>
+    </fieldset>
+
+    <hr style="border:none;border-top:1px solid var(--border);margin:18px 0 0;">
+
+    <label>Supporting Documents to Attach
+      <span class="hint">Select files here as a checklist reminder — this page cannot email attachments for you (see note before sending)</span>
+    </label>
+    <input type="file" id="fileUpload" multiple class="fileRow">
+
+    <hr style="border:none;border-top:1px solid var(--border);margin:18px 0 0;">
+
+    <label>Your Name<span class="req">*</span></label>
+    <input type="text" id="fromName" required>
+
+    <label>Your MIT Email<span class="req">*</span></label>
+    <input type="email" id="fromEmail" required placeholder="you@mit.edu">
+
+    <div id="flagBanners"></div>
+
+    <button type="submit" id="reviewBtn">Review Submission</button>
+  </form>
+
+  <div class="card" id="reviewCard">
+    <h2>Review before sending</h2>
+    <div id="reviewFlags"></div>
+    <dl id="reviewList"></dl>
+
+    <div id="attachChecklistWrap" style="margin-top:16px;">
+      <strong>Before you hit Send, attach these files:</strong>
+      <ul id="checklist"></ul>
+    </div>
+
+    <button id="sendBtn">Open Email to Send</button>
+    <button class="secondary" id="backBtn" type="button">Back to Edit</button>
+  </div>
+</div>
+
+<script>
+const SOE_RESEARCH_ADDRESS = "soe-research@mit.edu";
+
+const typeSelect = document.getElementById("requesterType");
+const fieldsets = {
+  standard: document.getElementById("fs-standard"),
+  incoming: document.getElementById("fs-incoming"),
+  emeritus: document.getElementById("fs-emeritus")
+};
+const isPostdocBox = document.getElementById("isPostdoc");
+const postdocMechWrap = document.getElementById("postdocMechWrap");
+
+typeSelect.addEventListener("change", () => {
+  Object.entries(fieldsets).forEach(([key, fs]) => {
+    const active = key === typeSelect.value;
+    fs.classList.toggle("active", active);
+    fs.querySelectorAll(`[data-req-${key}]`).forEach(el => { el.required = active; });
+  });
+  // Clear required on fields belonging to non-active tracks
+  Object.entries(fieldsets).forEach(([key, fs]) => {
+    if (key !== typeSelect.value) {
+      fs.querySelectorAll("input, textarea").forEach(el => { el.required = false; });
+    }
+  });
+});
+
+isPostdocBox.addEventListener("change", () => {
+  postdocMechWrap.style.display = isPostdocBox.checked ? "block" : "none";
+});
+
+const form = document.getElementById("otpiForm");
+const reviewCard = document.getElementById("reviewCard");
+const reviewList = document.getElementById("reviewList");
+const reviewFlags = document.getElementById("reviewFlags");
+const checklistEl = document.getElementById("checklist");
+const attachChecklistWrap = document.getElementById("attachChecklistWrap");
+const flagBannersTop = document.getElementById("flagBanners");
+
+let lastValues = null;
+let lastFiles = [];
+
+function monthsBetween(d1, d2) {
+  return (d2.getFullYear() - d1.getFullYear()) * 12 + (d2.getMonth() - d1.getMonth());
+}
+
+function computeFlags(type, v) {
+  const flags = [];
+  if (type === "standard") {
+    const pct = parseFloat(v.effortPercent);
+    if (!isNaN(pct) && pct > 25) {
+      flags.push({ level: "danger", text: `Proposed effort is ${pct}% — exceeds the ≤25% expectation for one-time PI/Co-PI status.` });
+    }
+    if (v.isPostdoc) {
+      if (v.postdocMechanism && v.postdocMechanism.trim()) {
+        flags.push({ level: "ok", text: `Postdoc PI/Co-PI — sponsor-specific mechanism named (${v.postdocMechanism.trim()}). Postdocs still require a mentoring plan.` });
+      } else {
+        flags.push({ level: "danger", text: "Postdoc PI/Co-PI with no funding mechanism named — postdocs are not normally allowed for one-time PI/Co-PI status except in rare, sponsor-required cases." });
+      }
+    }
+  }
+  if (type === "incoming") {
+    if (v.facultyStartDate && v.proposalStartDate) {
+      const fStart = new Date(v.facultyStartDate);
+      const pStart = new Date(v.proposalStartDate);
+      const months = monthsBetween(fStart, pStart);
+      if (months > 9) {
+        flags.push({ level: "warn", text: `Proposal period starts ${months} months after the faculty member's MIT start date — exceeds the 9-month rule for incoming faculty. Confirm this is still appropriate.` });
+      }
+    }
+  }
+  return flags;
+}
+
+function renderFlags(container, flags) {
+  container.innerHTML = "";
+  container.style.display = flags.length ? "block" : "none";
+  flags.forEach(f => {
+    const div = document.createElement("div");
+    div.className = "banner " + f.level;
+    div.textContent = f.text;
+    container.appendChild(div);
+  });
+}
+
+function collectValues() {
+  const g = id => (document.getElementById(id)?.value || "").trim();
+  return {
+    requesterType: typeSelect.value,
+    dlc: g("dlc"),
+    researcherName: g("researcherName"),
+    proposalTitle: g("proposalTitle"),
+    sponsor: g("sponsor"),
+    dueDate: g("dueDate"),
+    // standard
+    endorsement: g("endorsement"),
+    reasonNeeded: g("reasonNeeded"),
+    careerTrajectory: g("careerTrajectory"),
+    mentorRelationship: g("mentorRelationship"),
+    effortPercent: g("effortPercent"),
+    salarySupport: g("salarySupport"),
+    budget: g("budget"),
+    oversightIndividual: g("oversightIndividual"),
+    researchLandscape: g("researchLandscape"),
+    abstractNote: g("abstractNote"),
+    isPostdoc: isPostdocBox.checked,
+    postdocMechanism: g("postdocMechanism"),
+    // incoming
+    visitingAppointment: g("visitingAppointment"),
+    workAuthorization: g("workAuthorization"),
+    facultyStartDate: g("facultyStartDate"),
+    proposalStartDate: g("proposalStartDate"),
+    // emeritus
+    emeritusConfirmation: g("emeritusConfirmation"),
+    // submitter
+    fromName: g("fromName"),
+    fromEmail: g("fromEmail")
+  };
+}
+
+form.addEventListener("submit", (e) => {
+  e.preventDefault();
+  if (!typeSelect.value) {
+    typeSelect.reportValidity();
+    return;
+  }
+  if (!form.checkValidity()) {
+    form.reportValidity();
+    return;
+  }
+
+  const v = collectValues();
+  lastValues = v;
+  const fileInput = document.getElementById("fileUpload");
+  lastFiles = fileInput.files ? Array.from(fileInput.files).map(f => f.name) : [];
+
+  const flags = computeFlags(v.requesterType, v);
+  renderFlags(flagBannersTop, flags);
+  showReview(v, flags);
+});
+
+function typeLabel(t) {
+  return { standard: "Standard", incoming: "Incoming Faculty", emeritus: "Emeritus / Post-Retirement" }[t] || t;
+}
+
+function showReview(v, flags) {
+  renderFlags(reviewFlags, flags);
+
+  reviewList.innerHTML = "";
+  const rows = [
+    ["Requester Type", typeLabel(v.requesterType)],
+    ["DLC", v.dlc],
+    ["Researcher's Name", v.researcherName],
+    ["Proposal Title", v.proposalTitle],
+    ["Sponsor", v.sponsor],
+    ["Proposal Due Date", v.dueDate]
+  ];
+
+  if (v.requesterType === "standard") {
+    rows.push(
+      ["Endorsement", v.endorsement],
+      ["Reason Needed", v.reasonNeeded],
+      ["Career Trajectory", v.careerTrajectory],
+      ["Mentor/Mentee Relationship", v.mentorRelationship],
+      ["Proposed Effort %", v.effortPercent],
+      ["Salary Support", v.salarySupport],
+      ["Budget Notes", v.budget],
+      ["Oversight Individual", v.oversightIndividual],
+      ["Research Landscape", v.researchLandscape],
+      ["Abstract", v.abstractNote || "(none provided)"],
+      ["Postdoc?", v.isPostdoc ? `Yes${v.postdocMechanism ? " — " + v.postdocMechanism : " — no mechanism named"}` : "No"]
+    );
+  } else if (v.requesterType === "incoming") {
+    rows.push(
+      ["Visiting Appointment", v.visitingAppointment],
+      ["Work Authorization", v.workAuthorization],
+      ["Faculty MIT Start Date", v.facultyStartDate],
+      ["Proposal Period Start", v.proposalStartDate]
+    );
+  } else if (v.requesterType === "emeritus") {
+    rows.push(["Emeritus Confirmation", v.emeritusConfirmation]);
+  }
+
+  rows.push(["Submitted By", `${v.fromName} <${v.fromEmail}>`]);
+
+  for (const [label, value] of rows) {
+    const dt = document.createElement("dt");
+    dt.textContent = label;
+    const dd = document.createElement("dd");
+    dd.textContent = value;
+    reviewList.appendChild(dt);
+    reviewList.appendChild(dd);
+  }
+
+  checklistEl.innerHTML = "";
+  if (lastFiles.length) {
+    lastFiles.forEach(name => {
+      const li = document.createElement("li");
+      li.textContent = "📎 " + name;
+      checklistEl.appendChild(li);
+    });
+    attachChecklistWrap.style.display = "block";
+  } else {
+    attachChecklistWrap.style.display = "none";
+  }
+
+  form.style.display = "none";
+  reviewCard.style.display = "block";
+}
+
+document.getElementById("backBtn").addEventListener("click", () => {
+  reviewCard.style.display = "none";
+  form.style.display = "block";
+});
+
+document.getElementById("sendBtn").addEventListener("click", () => {
+  const v = lastValues;
+  const subject = `One-Time PI/Co-PI Status Request (${typeLabel(v.requesterType)}): ${v.proposalTitle} — ${v.researcherName}`;
+
+  const lines = [
+    `Requester Type: ${typeLabel(v.requesterType)}`,
+    `DLC: ${v.dlc}`,
+    `Researcher's Name: ${v.researcherName}`,
+    `Proposal Title: ${v.proposalTitle}`,
+    `Sponsor: ${v.sponsor}`,
+    `Proposal Due Date: ${v.dueDate}`,
+    ""
+  ];
+
+  if (v.requesterType === "standard") {
+    lines.push(
+      `Endorsement: ${v.endorsement}`,
+      `Reason Needed: ${v.reasonNeeded}`,
+      `Career Trajectory: ${v.careerTrajectory}`,
+      `Mentor/Mentee Relationship: ${v.mentorRelationship}`,
+      `Proposed Effort %: ${v.effortPercent}`,
+      `Salary Support: ${v.salarySupport}`,
+      `Budget Notes: ${v.budget}`,
+      `Oversight Individual: ${v.oversightIndividual}`,
+      `Research Landscape: ${v.researchLandscape}`,
+      `Abstract: ${v.abstractNote || "(none provided)"}`,
+      `Postdoc: ${v.isPostdoc ? "Yes" + (v.postdocMechanism ? " — " + v.postdocMechanism : " — no mechanism named") : "No"}`
+    );
+  } else if (v.requesterType === "incoming") {
+    lines.push(
+      `Visiting Appointment: ${v.visitingAppointment}`,
+      `Work Authorization: ${v.workAuthorization}`,
+      `Faculty MIT Start Date: ${v.facultyStartDate}`,
+      `Proposal Period Start: ${v.proposalStartDate}`
+    );
+  } else if (v.requesterType === "emeritus") {
+    lines.push(`Emeritus Confirmation: ${v.emeritusConfirmation}`);
+  }
+
+  lines.push("", `Submitted by: ${v.fromName} (${v.fromEmail})`);
+
+  if (lastFiles.length) {
+    lines.push("", `[Attachments to include: ${lastFiles.join(", ")}]`);
+  }
+
+  const flags = computeFlags(v.requesterType, v);
+  if (flags.some(f => f.level === "danger" || f.level === "warn")) {
+    lines.push("", "[Note to staff: this submission was flagged by the intake tool — see notes below]");
+    flags.forEach(f => lines.push(`  - ${f.text}`));
+  }
+
+  const mailto = `mailto:${encodeURIComponent(SOE_RESEARCH_ADDRESS)}`
+    + `?subject=${encodeURIComponent(subject)}`
+    + `&body=${encodeURIComponent(lines.join("\n"))}`;
+
+  window.location.href = mailto;
+});
+</script>
+</body>
+</html>
