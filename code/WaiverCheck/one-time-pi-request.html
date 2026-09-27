@@ -177,26 +177,31 @@
       </label>
       <input type="text" id="mentorRelationship" data-req-standard>
 
-      <div class="row2">
-        <div>
-          <label>Proposed Effort on Project (%)<span class="req">*</span></label>
-          <input type="number" id="effortPercent" min="0" max="100" data-req-standard>
-        </div>
-        <div>
-          <label>Level of Salary Support<span class="req">*</span></label>
-          <input type="text" id="salarySupport" data-req-standard placeholder="e.g. 1 month/year">
-        </div>
-      </div>
-
-      <label>Budget Notes<span class="req">*</span>
-        <span class="hint">Confirms scope/dollars are small; effort % above must comply with the ≤25% expectation</span>
-      </label>
-      <textarea id="budget" data-req-standard></textarea>
-
       <label>Oversight Individual<span class="req">*</span>
         <span class="hint">Faculty member, Senior Research Scientist, or Principal Research Scientist providing oversight</span>
       </label>
       <input type="text" id="oversightIndividual" data-req-standard>
+      <div class="checkline" style="margin-top:6px;">
+        <input type="checkbox" id="sameAsMentor">
+        <label for="sameAsMentor" style="font-weight:400;">Same person as the mentor above</label>
+      </div>
+
+      <label>Proposed Effort % <em style="font-weight:400;">or</em> Level of Salary Support<span class="req">*</span>
+        <span class="hint">Provide at least one — whichever is more applicable to this request</span>
+      </label>
+      <div class="row2">
+        <div>
+          <input type="number" id="effortPercent" min="0" max="100" placeholder="Effort %">
+        </div>
+        <div>
+          <input type="text" id="salarySupport" placeholder="e.g. 1 month/year">
+        </div>
+      </div>
+
+      <label>Budget Notes<span class="req">*</span>
+        <span class="hint">Confirms scope/dollars are small; effort % above (if given) must comply with the ≤25% expectation</span>
+      </label>
+      <textarea id="budget" data-req-standard></textarea>
 
       <label>Research Landscape Comment<span class="req">*</span>
         <span class="hint">Are others working in this area; why this person is uniquely positioned</span>
@@ -319,6 +324,21 @@ isPostdocBox.addEventListener("change", () => {
   postdocMechWrap.style.display = isPostdocBox.checked ? "block" : "none";
 });
 
+const sameAsMentorBox = document.getElementById("sameAsMentor");
+const mentorInput = document.getElementById("mentorRelationship");
+const oversightInput = document.getElementById("oversightIndividual");
+
+function syncOversightFromMentor() {
+  if (sameAsMentorBox.checked) {
+    oversightInput.value = mentorInput.value;
+  }
+}
+sameAsMentorBox.addEventListener("change", () => {
+  oversightInput.readOnly = sameAsMentorBox.checked;
+  syncOversightFromMentor();
+});
+mentorInput.addEventListener("input", syncOversightFromMentor);
+
 const form = document.getElementById("otpiForm");
 const reviewCard = document.getElementById("reviewCard");
 const reviewList = document.getElementById("reviewList");
@@ -419,6 +439,16 @@ form.addEventListener("submit", (e) => {
     return;
   }
 
+  if (typeSelect.value === "standard") {
+    const effortEl = document.getElementById("effortPercent");
+    const salaryEl = document.getElementById("salarySupport");
+    if (!effortEl.value.trim() && !salaryEl.value.trim()) {
+      alert("Provide either Proposed Effort % or Level of Salary Support (at least one is required).");
+      effortEl.focus();
+      return;
+    }
+  }
+
   const v = collectValues();
   lastValues = v;
   const fileInput = document.getElementById("fileUpload");
@@ -452,8 +482,8 @@ function showReview(v, flags) {
       ["Reason Needed", v.reasonNeeded],
       ["Career Trajectory", v.careerTrajectory],
       ["Mentor/Mentee Relationship", v.mentorRelationship],
-      ["Proposed Effort %", v.effortPercent],
-      ["Salary Support", v.salarySupport],
+      ["Proposed Effort %", v.effortPercent || "(not provided)"],
+      ["Salary Support", v.salarySupport || "(not provided)"],
       ["Budget Notes", v.budget],
       ["Oversight Individual", v.oversightIndividual],
       ["Research Landscape", v.researchLandscape],
