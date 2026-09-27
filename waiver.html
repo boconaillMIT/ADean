@@ -56,7 +56,7 @@
   </style>
 </head>
 <body>
-  <h1>SoE Request Pre-Check <span style="color:var(--muted);font-size:11px;font-weight:normal;">v2026-09-26g</span></h1>
+  <h1>SoE Request Pre-Check <span style="color:var(--muted);font-size:11px;font-weight:normal;">v2026-09-26h</span></h1>
   <details id="pasteBox">
     <summary>Paste PDF / extra text (optional)</summary>
     <textarea id="pastedText" rows="6" placeholder="Paste the PDF text or any extra request content here. It will be included in the check."></textarea>
@@ -241,7 +241,11 @@
         "<button id='checkLimitBtn' class='secondary'>Check FY waiver count</button>" +
         "<div id='limitResult'></div>" +
         "<div style='font-size:13px; margin-top:6px;'>RAS contact (required by QB to log): " +
-        "<input class='cc' id='rasField' type='text' placeholder='e.g. Katie McGeary' style='width:auto; display:inline-block; min-width:160px;'/></div>";
+        "<input class='cc' id='rasField' type='text' placeholder='e.g. Katie McGeary' style='width:auto; display:inline-block; min-width:160px;'/></div>" +
+        "<div id='exceptionBox' style='display:none; margin-top:8px;' class='ca-status bad'>" +
+        "\u26A0 This PI has already used 3 waivers this fiscal year. A 4th requires an explicit Dean/SOE-level exception - the department's stated reason does NOT count as authorization.<br>" +
+        "<label style='display:block; margin-top:6px; font-weight:600;'><input type='checkbox' id='exceptionConfirm'/> I confirm the Dean/SOE has approved this exception.</label>" +
+        "</div>";
       var extractedKerb = (w.values && w.values.kerberos) ? escapeHtml(String(w.values.kerberos)) : "";
       limitUI = limitUI.replace("id='kerbField' type='text'", "id='kerbField' type='text' value='" + extractedKerb + "'");
       var extractedRas = (items.ras_contact && items.ras_contact.value) ? escapeHtml(String(items.ras_contact.value)) : "";
@@ -257,6 +261,31 @@
       if (t.indexOf("emerit") >= 0 || t.indexOf("retire") >= 0 || t.indexOf("tenure") >= 0) return "emeritus";
       return "standard";
     }
+    function checkExceptionGate(kerb, out, proceedFn) {
+      // Looks up the PI's current FY count and decides whether logging can proceed.
+      // count < 3  -> proceed immediately.
+      // count >= 3 -> require the explicit "Dean/SOE approved" checkbox; if unticked, block with a hard red message.
+      fetch(QB_FUNCTION_URL, { method:"POST", headers:{ "Content-Type":"application/json" }, body: JSON.stringify({ mode:"count", kerberos:kerb }) })
+        .then(function (r) { return r.json().then(function (d) { return { ok:r.ok, d:d }; }); })
+        .then(function (x) {
+          if (!x.ok) { out.innerHTML = "<div class='flag bad'>Could not verify the FY waiver count: " + escapeHtml(x.d.error || "request failed") + "</div>"; return; }
+          var n = x.d.count;
+          var box = document.getElementById("exceptionBox");
+          if (n < 3) { proceedFn(false); return; }
+          // At or over the limit: reveal the checkbox and require it.
+          if (box) box.style.display = "block";
+          var confirmEl = document.getElementById("exceptionConfirm");
+          var confirmed = confirmEl && confirmEl.checked;
+          if (!confirmed) {
+            out.innerHTML = "<div class='flag bad'>\u26A0 BLOCKED: this PI has already used " + n + " waivers in FY" + escapeHtml(x.d.fy) +
+              " (limit is 3). Logging a 4th requires ticking the Dean/SOE-approval confirmation above.</div>";
+            return;
+          }
+          proceedFn(true);
+        })
+        .catch(function (e) { out.innerHTML = "<div class='flag bad'>Could not verify the FY waiver count: " + escapeHtml(String(e)) + "</div>"; });
+    }
+
     function isPostdocExc(f) {
       // Keyed on the postdoc-specific MECHANISM being named - that is what makes it an exception,
       // and it does not depend on the separate is_postdoc field being set.
@@ -550,24 +579,30 @@
         if (out) out.innerHTML = "<div class='flag warn'>Reply-all opened. Not logged to QB - QuickBase requires an RAS contact; enter one in the RAS contact box in the checklist above and use the Log button.</div>";
         return;
       }
-      var v = (lastResult && lastResult.waiver && lastResult.waiver.values) || {};
-      if (!v.kerberos) v.kerberos = kerb;
-      v.ras = rasVal2;
-      if (out) out.innerHTML = "<div class='flag warn'>Reply-all opened. Logging to QuickBase...</div>";
-      fetch(QB_FUNCTION_URL, { method:"POST", headers:{ "Content-Type":"application/json" }, body: JSON.stringify({ mode:"log", kerberos:kerb, values:v }) })
-        .then(function (r) { return r.json().then(function (d) { return { ok:r.ok, d:d }; }); })
-        .then(function (x) {
-          if (!out) return;
-          if (!x.ok) {
-            out.innerHTML = "<div class='flag bad'>Reply-all opened. Could not log to QB: " + escapeHtml(x.d.error || "request failed") + "</div>" +
-              "<details style='font-size:11px;color:var(--muted);'><summary>raw response</summary><pre>" + escapeHtml(JSON.stringify(x.d, null, 2)) + "</pre></details>";
-            return;
-          }
-          if (x.d.duplicate) { out.innerHTML = "<div class='flag warn'>Reply-all opened. " + escapeHtml(x.d.message) + " (not logged again).</div>"; return; }
-          out.innerHTML = "<div class='flag ok'>Reply-all opened. " + escapeHtml(x.d.message || "Logged to QuickBase.") + "</div>" +
-            "<details style='font-size:11px;color:var(--muted);'><summary>raw response</summary><pre>" + escapeHtml(JSON.stringify(x.d)) + "</pre></details>";
-        })
-        .catch(function (e) { if (out) out.innerHTML = "<div class='flag bad'>Reply-all opened. QB request failed: " + escapeHtml(String(e)) + "</div>"; });
+      if (out) out.innerHTML = "<div class='flag warn'>Reply-all opened. Checking the FY waiver limit...</div>";
+      checkExceptionGate(kerb, out, function (isException) {
+        var v = (lastResult && lastResult.waiver && lastResult.waiver.values) || {};
+        if (!v.kerberos) v.kerberos = kerb;
+        v.ras = rasVal2;
+        if (isException) {
+          v.reason_text = (v.reason_text ? v.reason_text + " " : "") + "[DEAN/SOE-APPROVED EXCEPTION: logged as waiver #4+ this FY, confirmed by reviewer.]";
+        }
+        if (out) out.innerHTML = "<div class='flag warn'>Reply-all opened. Logging to QuickBase...</div>";
+        fetch(QB_FUNCTION_URL, { method:"POST", headers:{ "Content-Type":"application/json" }, body: JSON.stringify({ mode:"log", kerberos:kerb, values:v }) })
+          .then(function (r) { return r.json().then(function (d) { return { ok:r.ok, d:d }; }); })
+          .then(function (x) {
+            if (!out) return;
+            if (!x.ok) {
+              out.innerHTML = "<div class='flag bad'>Reply-all opened. Could not log to QB: " + escapeHtml(x.d.error || "request failed") + "</div>" +
+                "<details style='font-size:11px;color:var(--muted);'><summary>raw response</summary><pre>" + escapeHtml(JSON.stringify(x.d, null, 2)) + "</pre></details>";
+              return;
+            }
+            if (x.d.duplicate) { out.innerHTML = "<div class='flag warn'>Reply-all opened. " + escapeHtml(x.d.message) + " (not logged again).</div>"; return; }
+            out.innerHTML = "<div class='flag ok'>Reply-all opened. " + escapeHtml(x.d.message || "Logged to QuickBase.") + "</div>" +
+              "<details style='font-size:11px;color:var(--muted);'><summary>raw response</summary><pre>" + escapeHtml(JSON.stringify(x.d)) + "</pre></details>";
+          })
+          .catch(function (e) { if (out) out.innerHTML = "<div class='flag bad'>Reply-all opened. QB request failed: " + escapeHtml(String(e)) + "</div>"; });
+      });
     }
 
     function openReplyAll(html) {
@@ -631,9 +666,19 @@
       var out = document.getElementById("wLogResult") || document.getElementById("limitResult");
       if (!kerb) { out.innerHTML = "<div class='flag warn'>Enter the PI's Kerberos before logging the waiver.</div>"; return; }
       if (!rasVal) { out.innerHTML = "<div class='flag warn'>QuickBase requires an RAS contact - enter one in the RAS contact box before logging.</div>"; return; }
-      var v = (lastResult && lastResult.waiver && lastResult.waiver.values) || {};
-      if (!v.kerberos) v.kerberos = kerb;
-      v.ras = rasVal;
+      out.innerHTML = "<div class='flag warn'>Checking the FY waiver limit...</div>";
+      checkExceptionGate(kerb, out, function (isException) {
+        var v = (lastResult && lastResult.waiver && lastResult.waiver.values) || {};
+        if (!v.kerberos) v.kerberos = kerb;
+        v.ras = rasVal;
+        if (isException) {
+          v.reason_text = (v.reason_text ? v.reason_text + " " : "") + "[DEAN/SOE-APPROVED EXCEPTION: logged as waiver #4+ this FY, confirmed by reviewer.]";
+        }
+        performLog(kerb, v, out);
+      });
+    }
+
+    function performLog(kerb, v, out) {
       out.innerHTML = "<div class='flag warn'>Logging to QuickBase...</div>";
       fetch(QB_FUNCTION_URL, { method:"POST", headers:{ "Content-Type":"application/json" }, body: JSON.stringify({ mode:"log", kerberos:kerb, values:v }) })
         .then(function (r) { return r.json().then(function (d) { return { ok:r.ok, d:d }; }); })
