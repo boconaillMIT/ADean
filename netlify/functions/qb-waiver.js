@@ -129,20 +129,44 @@ exports.handler = async (event) => {
       });
       const cd = await cr.json();
       if (!cr.ok) return fail(502, { error: "QuickBase create failed", detail: cd });
-      var id = cd.metadata && cd.metadata.createdRecordIds && cd.metadata.createdRecordIds[0];
-      if (id === undefined && cd.data && cd.data[0] && cd.data[0][String(F.RECORD_ID)]) {
-        id = cd.data[0][String(F.RECORD_ID)].value; // fallback if metadata shape differs
-      }
-      // Report success by KC# / waiver ordinal - the useful, reliable identifiers -
-      // rather than QuickBase's internal numeric record ID, whose extraction has proven unreliable
-      // and which isn't actionable information anyway.
+
       var kcLabel = (v.kc_number !== undefined && v.kc_number !== null && String(v.kc_number) !== "")
         ? ("KC# " + v.kc_number) : "this waiver";
+
+      // VERIFY the write actually landed, rather than trusting the create call's own HTTP status -
+      // QuickBase has returned 200 in the past for writes that did not persist.
+      if (v.kc_number !== undefined && v.kc_number !== null && String(v.kc_number) !== "") {
+        const verifyWhere = "{" + F.KC_NUMBER + ".EX.'" + qesc(v.kc_number) + "'}";
+        const vr = await fetch(QB_API + "/records/query", {
+          method: "POST", headers,
+          body: JSON.stringify({ from: QB_TABLE, select: [F.RECORD_ID, F.KERBEROS, F.FISCAL_YEAR], where: verifyWhere }),
+        });
+        const vd = await vr.json();
+        const found = vr.ok && (vd.data || []).length > 0;
+        if (!found) {
+          return fail(502, {
+            error: "QuickBase reported the write succeeded, but the record could not be found on verification.",
+            createResponse: cd,
+            verifyResponse: vd,
+            attemptedFields: rec,
+          });
+        }
+        const rid = vd.data[0][String(F.RECORD_ID)] && vd.data[0][String(F.RECORD_ID)].value;
+        return ok({
+          logged: true,
+          verified: true,
+          recordId: rid || null,
+          waiverOrdinal: waiverOrdinal,
+          message: "Logged " + kcLabel + " to QuickBase and verified (waiver #" + waiverOrdinal + " this FY)."
+        });
+      }
+
+      // No KC# to verify against (shouldn't normally happen) - report unverified.
       return ok({
         logged: true,
-        recordId: id === undefined ? null : id,
+        verified: false,
         waiverOrdinal: waiverOrdinal,
-        message: "Logged " + kcLabel + " to QuickBase (waiver #" + waiverOrdinal + " this FY)."
+        message: "Logged " + kcLabel + " to QuickBase (unverified - no KC# to check)."
       });
     }
 
