@@ -37,7 +37,7 @@
   </style>
 </head>
 <body>
-  <h1>Email to Commitment <span style="color:var(--muted);font-size:11px;font-weight:normal;">v2026-09-28b</span></h1>
+  <h1>Email to Commitment <span style="color:var(--muted);font-size:11px;font-weight:normal;">v2026-09-28c</span></h1>
   <div class="hint">Reads the open email and proposes a Commitment record. Anything the email didn't state is left blank and highlighted.</div>
   <button id="extractBtn" disabled>Extract from this email</button>
   <div id="status">Loading...</div>
@@ -59,6 +59,7 @@
     <label>Detailed category<select id="f_detailedCategory"></select></label>
     <label>Administrative contact<input id="f_adminContact" type="text" /></label>
     <label>Notes<textarea id="f_notes"></textarea></label>
+    <label style="font-weight:normal; margin-top:14px;"><input type="checkbox" id="attachEml" checked style="width:auto; margin-right:6px;" />Attach this email (.eml) to the record</label>
     <button id="createBtn">Create commitment</button>
     <div id="createResult"></div>
   </div>
@@ -169,23 +170,62 @@
       return v;
     }
 
+    // Largest base64 payload we will send. Netlify functions accept about 6 MB per request.
+    var MAX_B64 = 4500000;
+
+    function emlName() {
+      var subj = (Office.context.mailbox.item.subject || "email").replace(/[\\\/:*?"<>|\r\n]+/g, " ").replace(/\s+/g, " ").trim().slice(0, 60);
+      return "Email - " + (subj || "email") + ".eml";
+    }
+
+    // Exports the open email as an .eml (base64). Calls cb(attachmentOrNull, noteOrNull).
+    function getEml(cb) {
+      var item = Office.context.mailbox.item;
+      var supported = Office.context.requirements && Office.context.requirements.isSetSupported("Mailbox", "1.14");
+      if (!supported || typeof item.getAsFileAsync !== "function") {
+        cb(null, "This version of Outlook can't export the email as a file, so it was created without the attachment.");
+        return;
+      }
+      item.getAsFileAsync(function (res) {
+        if (res.status !== Office.AsyncResultStatus.Succeeded) {
+          cb(null, "Could not export the email (" + ((res.error && res.error.message) || "unknown error") + "), so it was created without the attachment.");
+          return;
+        }
+        var data = res.value || "";
+        if (data.length > MAX_B64) {
+          cb(null, "The email is too large to attach (over about 3 MB, usually because of its own attachments), so it was created without it.");
+          return;
+        }
+        cb({ fileName: emlName(), data: data }, null);
+      });
+    }
+
     function createCommitment(force) {
       var out = document.getElementById("createResult"), v = collect();
       if (!v.name.trim()) {
         out.innerHTML = "<div class='flag bad'>A commitment name is required before creating.</div>"; return;
       }
       out.innerHTML = "<div class='flag warn'>Creating in QuickBase...</div>";
-      fetch(FUNC_QB, { method:"POST", headers:{ "Content-Type":"application/json" }, body: JSON.stringify({ mode:"create", values:v, force:force }) })
-        .then(function (r) { return r.json().then(function (d) { return { ok:r.ok, d:d }; }); })
+      var wantEml = document.getElementById("attachEml").checked;
+      var proceed = function (attachment, note) { postCreate(v, force, attachment, note, out); };
+      if (wantEml) getEml(proceed); else proceed(null, null);
+    }
+
+    function postCreate(v, force, attachment, note, out) {
+      var payload = { mode:"create", values:v, force:force };
+      if (attachment) payload.attachment = attachment;
+      fetch(FUNC_QB, { method:"POST", headers:{ "Content-Type":"application/json" }, body: JSON.stringify(payload) })
+        .then(function (r) { return r.text().then(function (t) { var d; try { d = JSON.parse(t); } catch (e) { d = { error: t.slice(0, 200) }; } return { ok:r.ok, d:d }; }); })
         .then(function (x) {
           if (!x.ok) { out.innerHTML = "<div class='flag bad'>Could not create: " + esc(x.d.error || "request failed") + "</div>"; return; }
           if (x.d.duplicate) {
-            out.innerHTML = "<div class='flag warn'>A commitment with this person and name already exists (<a href='" + esc(x.d.url) + "' target='_blank'>open it</a>).</div>" +
+            out.innerHTML = "<div class='flag warn'>A commitment with this name already exists (<a href='" + esc(x.d.url) + "' target='_blank'>open it</a>).</div>" +
               "<button id='forceBtn' class='secondary'>Create anyway</button>";
             document.getElementById("forceBtn").addEventListener("click", function () { createCommitment(true); });
             return;
           }
-          out.innerHTML = "<div class='flag ok'>Created commitment #" + esc(x.d.recordId) + ". <a href='" + esc(x.d.url) + "' target='_blank'>Open the record</a> and use Add Payment there to enter the payment schedule.</div>";
+          out.innerHTML = "<div class='flag ok'>Created commitment #" + esc(x.d.recordId) + (attachment ? " with the email attached" : "") + ". <a href='" + esc(x.d.url) + "' target='_blank'>Open the record</a> and use Add Payment there to enter the payment schedule.</div>" +
+            (note ? "<div class='flag warn'>" + esc(note) + "</div>" : "");
         })
         .catch(function (e) { out.innerHTML = "<div class='flag bad'>Request failed: " + esc(String(e)) + "</div>"; });
     }
