@@ -7,13 +7,12 @@
   `choices` is the map returned by qb-commitment (mode "choices"), keyed by field ID.
   Parley is told to use only those values for the multiple-choice fields.
 
+  PARLEY: uses the same endpoint, model and request/response shape as parley-waiver-check.js.
+
   BEFORE DEPLOYING:
-    1. The Parley call is isolated in callParley() below. It is a stub written to the same
-       shape as the other stubs in this project - REPLACE its fetch block with the exact
-       call used in parley-calendar-extract.js (endpoint, auth header, request and
-       response shape).
-    2. Env var: PARLEY_COMMITMENT_API_KEY (falls back to PARLEY_API_KEY) so usage can be
-       tracked separately, like the calendar tool.
+    Set PARLEY_COMMITMENT_API_KEY in Netlify env vars (a key created for this tool, so its
+    usage is tracked separately). There is deliberately no fallback to PARLEY_API_KEY.
+    Environment variables only take effect on a new deploy.
 */
 
 const CHOICE_LABELS = {
@@ -23,17 +22,24 @@ const CHOICE_LABELS = {
 
 function json(status, obj) { return { statusCode: status, body: JSON.stringify(obj) }; }
 
+const PARLEY_URL = "https://parley.api.mit.edu/v1/chat/completions";
+const MODEL = "bedrock/claude-sonnet-4-6";
+
 async function callParley(prompt) {
-  // --- REPLACE this block with the call pattern from parley-calendar-extract.js ---
-  const key = process.env.PARLEY_COMMITMENT_API_KEY || process.env.PARLEY_API_KEY;
-  const resp = await fetch(process.env.PARLEY_ENDPOINT || "https://parley.mit.edu/api/agents/chat/bedrock", {
+  // Own key so this tool's Parley usage is tracked separately (same approach as the calendar tool).
+  // No fallback to PARLEY_API_KEY on purpose: a silent fallback would mix the usage again.
+  const apiKey = process.env.PARLEY_COMMITMENT_API_KEY;
+  if (!apiKey) throw new Error("PARLEY_COMMITMENT_API_KEY is not set in Netlify environment variables");
+
+  const resp = await fetch(PARLEY_URL, {
     method: "POST",
-    headers: { "Content-Type": "application/json", "Authorization": "Bearer " + key },
-    body: JSON.stringify({ messages: [{ role: "user", content: prompt }] })
+    headers: { "Content-Type": "application/json", Authorization: "Bearer " + apiKey },
+    body: JSON.stringify({ model: MODEL, max_tokens: 2500, temperature: 0, messages: [{ role: "user", content: prompt }] })
   });
-  if (!resp.ok) throw new Error("Parley returned " + resp.status);
-  const data = await resp.json();
-  return (data.content && data.content[0] && data.content[0].text) || data.completion || "";
+  const text = await resp.text();
+  if (!resp.ok) throw new Error("Parley returned " + resp.status + ": " + text.slice(0, 300));
+  const data = JSON.parse(text);
+  return (data && data.choices && data.choices[0] && data.choices[0].message && data.choices[0].message.content) || "";
 }
 
 exports.handler = async function (event) {
@@ -89,7 +95,9 @@ ${String(body).slice(0, 30000)}
     const raw = await callParley(prompt);
     let parsed = null;
     try {
-      const cleaned = raw.replace(/```json|```/g, "").trim();
+      let cleaned = raw.replace(/```json|```/g, "").trim();
+      const a = cleaned.indexOf("{"), b = cleaned.lastIndexOf("}");
+      if (a !== -1 && b > a) cleaned = cleaned.slice(a, b + 1);
       parsed = JSON.parse(cleaned);
     } catch (e) { /* fall through with parsed = null */ }
     return json(200, { result: parsed, raw: parsed ? undefined : raw });
