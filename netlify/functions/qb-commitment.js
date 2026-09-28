@@ -6,10 +6,10 @@
         -> { choices: { "<fieldId>": [allowed values] } } for the multiple-choice fields,
            so the pane can fill dropdowns and Parley can be held to real values.
 
-    { mode: "create", values: {...}, force?: true }
+    { mode: "create", values: {...}, force?: true, attachment?: { fileName, data(base64) } }
         -> creates one Commitment record. Unless force is true, first checks for an
            existing record with the same person + commitment name and, if found,
-           returns { duplicate: true, recordId } instead of creating another.
+           returns { duplicate: true, recordId } instead of creating another. Only the name is required (a commitment can be for a project, not a person).
 
   TOKEN: this table's ID starts with "br" (the Waiver/PI Status tables start with "bss"),
   so it is probably in a different QuickBase app. Set QB_COMMITMENTS_TOKEN in Netlify env
@@ -25,6 +25,7 @@ const F = {
   department: 12, generalCategory: 42, detailedCategory: 13, name: 14,
   inOut: 31, adminContact: 29, status: 26, type: 16, notes: 18
 };
+const ATTACHMENT_FIELD = 25;   // "Attachment" (file field) - holds the .eml of the source email
 const CHOICE_IDS = [F.fyStart, F.department, F.generalCategory, F.detailedCategory, F.inOut, F.status, F.type];
 
 function qbHeaders() {
@@ -44,7 +45,7 @@ exports.handler = async function (event) {
 
   try {
     if (body.mode === "choices") return await getChoices();
-    if (body.mode === "create") return await createCommitment(body.values || {}, !!body.force);
+    if (body.mode === "create") return await createCommitment(body.values || {}, !!body.force, body.attachment || null);
     return json(400, { error: "mode must be 'choices' or 'create'" });
   } catch (err) {
     console.error("qb-commitment failed:", err);
@@ -63,7 +64,7 @@ async function getChoices() {
   return json(200, { choices: choices });
 }
 
-async function createCommitment(values, force) {
+async function createCommitment(values, force, attachment) {
   const rec = {};
   Object.keys(F).forEach(function (k) {
     let v = values[k];
@@ -78,8 +79,13 @@ async function createCommitment(values, force) {
     rec[F[k]] = { value: v };
   });
 
-  if (!rec[F.name] || !rec[F.person]) {
-    return json(400, { error: "Commitment name and person are required." });
+  if (!rec[F.name]) {
+    return json(400, { error: "Commitment name is required." });
+  }
+
+  // Optional file for the Attachment field: { fileName, data } with data as base64.
+  if (attachment && attachment.fileName && attachment.data) {
+    rec[ATTACHMENT_FIELD] = { value: { fileName: String(attachment.fileName), data: String(attachment.data) } };
   }
 
   if (!force) {
@@ -90,7 +96,8 @@ async function createCommitment(values, force) {
       body: JSON.stringify({
         from: TABLE_ID,
         select: [3],
-        where: "{" + F.person + ".EX.'" + esc(rec[F.person].value) + "'}AND{" + F.name + ".EX.'" + esc(rec[F.name].value) + "'}"
+        where: (rec[F.person] ? "{" + F.person + ".EX.'" + esc(rec[F.person].value) + "'}AND" : "") +
+               "{" + F.name + ".EX.'" + esc(rec[F.name].value) + "'}"
       })
     });
     if (q.ok) {
