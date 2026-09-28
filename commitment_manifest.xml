@@ -1,0 +1,100 @@
+<!-- 
+  Email to Commitment — Outlook add-in manifest (XML / add-in manifest).
+  Separate add-in from the Research Tools and Email to Calendar manifests, so it can be
+  offered to finance users without the other tools.
+
+  CHANGE LOG:
+    1.0.0.0 (2026-09-28) — Initial version. One button opens commitment.html.
+
+  BEFORE SIDELOADING:
+    1. Host commitment.html at the same place as waiver.html, and deploy the functions
+       parley-commitment-extract and qb-commitment.
+    2. Icons below are PLACEHOLDERS (they reuse the waiver icons). Swap the three bt:Image
+       URLs for a distinct icon set when you have one.
+    3. Keep the <Id> GUID different from the other manifests. Bump <Version> on every change
+       so Outlook doesn't serve a cached copy.
+ -->
+<OfficeApp xmlns="http://schemas.microsoft.com/office/appforoffice/1.1" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xmlns:bt="http://schemas.microsoft.com/office/officeappbasictypes/1.0" xsi:type="MailApp">
+<Id>7d2f4a8c-3b1e-4f6a-9c05-2e8b7a1d0002</Id>
+<Version>1.0.0.0</Version>
+<ProviderName>MIT School of Engineering</ProviderName>
+<DefaultLocale>en-US</DefaultLocale>
+<DisplayName DefaultValue="Email to Commitment"/>
+<Description DefaultValue="Reads a funding-commitment email and proposes a Commitment record in QuickBase for review before it is created."/>
+<IconUrl DefaultValue="https://waivercheck.netlify.app/icon-64.png"/>
+<HighResolutionIconUrl DefaultValue="https://waivercheck.netlify.app/icon-128.png"/>
+<SupportUrl DefaultValue="https://waivercheck.netlify.app/"/>
+<Hosts>
+<Host Name="Mailbox"/>
+</Hosts>
+<Requirements>
+<Sets>
+<Set Name="Mailbox" MinVersion="1.3"/>
+</Sets>
+</Requirements>
+<FormSettings>
+<Form xsi:type="ItemRead">
+<DesktopSettings>
+<SourceLocation DefaultValue="https://waivercheck.netlify.app/commitment.html"/>
+<RequestedHeight>280</RequestedHeight>
+</DesktopSettings>
+</Form>
+</FormSettings>
+<Permissions>ReadItem</Permissions>
+<Rule xsi:type="RuleCollection" Mode="Or">
+<Rule xsi:type="ItemIs" ItemType="Message" FormType="Read"/>
+</Rule>
+<DisableEntityHighlighting>false</DisableEntityHighlighting>
+<VersionOverrides xmlns="http://schemas.microsoft.com/office/mailappversionoverrides" xsi:type="VersionOverridesV1_0">
+<Requirements>
+<bt:Sets DefaultMinVersion="1.3">
+<bt:Set Name="Mailbox"/>
+</bt:Sets>
+</Requirements>
+<Hosts>
+<Host xsi:type="MailHost">
+<DesktopFormFactor>
+<ExtensionPoint xsi:type="MessageReadCommandSurface">
+<OfficeTab id="TabDefault">
+<Group id="commitmentGroup">
+<Label resid="groupLabel"/>
+<Control xsi:type="Button" id="commitmentButton">
+<Label resid="btnLabel"/>
+<Supertip>
+<Title resid="btnLabel"/>
+<Description resid="btnTip"/>
+</Supertip>
+<Icon>
+<bt:Image size="16" resid="icon16"/>
+<bt:Image size="32" resid="icon32"/>
+<bt:Image size="80" resid="icon80"/>
+</Icon>
+<Action xsi:type="ShowTaskpane">
+<SourceLocation resid="commitmentUrl"/>
+</Action>
+</Control>
+</Group>
+</OfficeTab>
+</ExtensionPoint>
+</DesktopFormFactor>
+</Host>
+</Hosts>
+<Resources>
+<bt:Images>
+<bt:Image id="icon16" DefaultValue="https://waivercheck.netlify.app/icon-16.png"/>
+<bt:Image id="icon32" DefaultValue="https://waivercheck.netlify.app/icon-32.png"/>
+<bt:Image id="icon80" DefaultValue="https://waivercheck.netlify.app/icon-80.png"/>
+</bt:Images>
+<bt:Urls>
+<bt:Url id="commitmentUrl" DefaultValue="https://waivercheck.netlify.app/commitment.html"/>
+</bt:Urls>
+<bt:ShortStrings>
+<bt:String id="groupLabel" DefaultValue="Finance Tools"/>
+<bt:String id="btnLabel" DefaultValue="Email to Commitment"/>
+</bt:ShortStrings>
+<bt:LongStrings>
+<bt:String id="btnTip" DefaultValue="Propose a QuickBase Commitment record from this email for you to review and create."/>
+</bt:LongStrings>
+</Resources>
+</VersionOverrides>
+</OfficeApp>

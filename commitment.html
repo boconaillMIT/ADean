@@ -1,0 +1,194 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Email to Commitment</title>
+  <script src="https://appsforoffice.microsoft.com/lib/1/hosted/office.js"></script>
+  <style>
+    :root {
+      --fg:#1a1a1a; --muted:#666; --ok:#137a3f; --bad:#b3261e; --warn:#8a6d00;
+      --bg:#fff; --line:#e0e0e0; --btn:#0f6cbd; --btnfg:#fff; --panel:#f5f7fa;
+    }
+    @media (prefers-color-scheme: dark) {
+      :root { --fg:#eee; --muted:#aaa; --ok:#4ac97e; --bad:#f2857c; --warn:#e8c65b;
+              --bg:#1f1f1f; --line:#3a3a3a; --panel:#2a2a2a; }
+    }
+    body { font-family:"Segoe UI",system-ui,sans-serif; color:var(--fg); background:var(--bg);
+           margin:0; padding:14px; font-size:14px; }
+    h1 { font-size:15px; margin:0 0 10px; }
+    button { background:var(--btn); color:var(--btnfg); border:0; border-radius:4px;
+             padding:8px 12px; font-size:14px; cursor:pointer; margin:8px 4px 4px 0; }
+    button.secondary { background:transparent; color:var(--btn); border:1px solid var(--btn); }
+    button:disabled { opacity:.5; cursor:default; }
+    label { display:block; font-weight:600; font-size:12px; margin:10px 0 2px; }
+    input, select, textarea { width:100%; box-sizing:border-box; font-family:inherit; font-size:13px;
+      padding:6px; border:1px solid var(--line); border-radius:4px; background:var(--bg); color:var(--fg); }
+    textarea { min-height:80px; resize:vertical; }
+    .needs { border-color:var(--warn); background:rgba(138,109,0,.10); }
+    #status { color:var(--muted); margin:10px 0; min-height:1.2em; }
+    .flag { font-size:12px; padding:6px 8px; border-radius:4px; margin:6px 0; }
+    .flag.warn { background:rgba(138,109,0,.14); color:var(--warn); }
+    .flag.bad  { background:rgba(179,38,30,.12); color:var(--bad); }
+    .flag.ok   { background:rgba(19,122,63,.12); color:var(--ok); }
+    .hint { color:var(--muted); font-size:12px; margin:4px 0; }
+    hr { border:0; border-top:1px solid var(--line); margin:14px 0; }
+    a { color:var(--btn); }
+  </style>
+</head>
+<body>
+  <h1>Email to Commitment <span style="color:var(--muted);font-size:11px;font-weight:normal;">v2026-09-28a</span></h1>
+  <div class="hint">Reads the open email and proposes a Commitment record. Anything the email didn't state is left blank and highlighted.</div>
+  <button id="extractBtn" disabled>Extract from this email</button>
+  <div id="status">Loading...</div>
+  <div id="flags"></div>
+
+  <div id="formWrap" style="display:none;">
+    <hr>
+    <label>Commitment name<input id="f_name" type="text" /></label>
+    <label>Commitment person (Last, First)<input id="f_person" type="text" /></label>
+    <label>Department<select id="f_department"></select></label>
+    <label>FY commitment start<select id="f_fyStart"></select></label>
+    <label># of commitment years<input id="f_years" type="number" min="0" step="1" /></label>
+    <label>Date committed<input id="f_dateCommitted" type="date" /></label>
+    <label>Total amount committed ($)<input id="f_amount" type="number" min="0" step="0.01" /></label>
+    <label>Status<select id="f_status"></select></label>
+    <label>Type<select id="f_type"></select></label>
+    <label>In/Out<select id="f_inOut"></select></label>
+    <label>General category<select id="f_generalCategory"></select></label>
+    <label>Detailed category<select id="f_detailedCategory"></select></label>
+    <label>Administrative contact<input id="f_adminContact" type="text" /></label>
+    <label>Notes<textarea id="f_notes"></textarea></label>
+    <button id="createBtn">Create commitment</button>
+    <div id="createResult"></div>
+  </div>
+
+  <script>
+    var FUNC_EXTRACT = "/.netlify/functions/parley-commitment-extract";
+    var FUNC_QB = "/.netlify/functions/qb-commitment";
+
+    var CHOICE_KEYS = { "6":"fyStart", "12":"department", "42":"generalCategory", "13":"detailedCategory",
+                        "31":"inOut", "26":"status", "16":"type" };
+    var FIELD_KEYS = ["name","person","department","fyStart","years","dateCommitted","amount","status",
+                      "type","inOut","generalCategory","detailedCategory","adminContact","notes"];
+    var choices = {};   // keyed by field key, e.g. choices.department = [...]
+    var localFlags = [];
+
+    Office.onReady(function () {
+      var btn = document.getElementById("extractBtn");
+      btn.addEventListener("click", runExtract);
+      document.getElementById("createBtn").addEventListener("click", function () { createCommitment(false); });
+      FIELD_KEYS.forEach(function (k) {
+        var el = document.getElementById("f_" + k);
+        el.addEventListener("input", function () { markNeeds(k); });
+        el.addEventListener("change", function () { markNeeds(k); });
+      });
+      loadChoices().then(function () {
+        btn.disabled = false;
+        setStatus("Ready. Open the email that confirms the commitment and press the button.");
+      });
+    });
+
+    function setStatus(m) { document.getElementById("status").textContent = m; }
+    function esc(s) { return String(s).replace(/[&<>]/g, function (c) { return { "&":"&amp;", "<":"&lt;", ">":"&gt;" }[c]; }); }
+
+    function loadChoices() {
+      return fetch(FUNC_QB, { method:"POST", headers:{ "Content-Type":"application/json" }, body: JSON.stringify({ mode:"choices" }) })
+        .then(function (r) { return r.json().then(function (d) { return { ok:r.ok, d:d }; }); })
+        .then(function (x) {
+          if (!x.ok) { setStatus("Could not load the QuickBase choice lists: " + (x.d.error || "request failed")); return; }
+          Object.keys(CHOICE_KEYS).forEach(function (id) {
+            var key = CHOICE_KEYS[id];
+            choices[key] = (x.d.choices && x.d.choices[id]) || [];
+            var sel = document.getElementById("f_" + key);
+            sel.innerHTML = "<option value=''></option>" + choices[key].map(function (c) {
+              return "<option value=\"" + String(c).replace(/"/g, "&quot;") + "\">" + esc(c) + "</option>";
+            }).join("");
+          });
+        })
+        .catch(function (e) { setStatus("Could not load the QuickBase choice lists: " + e); });
+    }
+
+    function localDate(d) {
+      var m = ("0" + (d.getMonth() + 1)).slice(-2), day = ("0" + d.getDate()).slice(-2);
+      return d.getFullYear() + "-" + m + "-" + day;
+    }
+
+    function runExtract() {
+      var item = Office.context.mailbox.item;
+      var created = item.dateTimeCreated ? localDate(new Date(item.dateTimeCreated)) : "";
+      document.getElementById("createResult").innerHTML = "";
+      setStatus("Reading email...");
+      item.body.getAsync(Office.CoercionType.Text, function (res) {
+        if (res.status !== Office.AsyncResultStatus.Succeeded) { setStatus("Could not read the email body: " + res.error.message); return; }
+        setStatus("Asking Parley to propose a commitment...");
+        var idChoices = {};
+        Object.keys(CHOICE_KEYS).forEach(function (id) { idChoices[id] = choices[CHOICE_KEYS[id]] || []; });
+        fetch(FUNC_EXTRACT, {
+          method:"POST", headers:{ "Content-Type":"application/json" },
+          body: JSON.stringify({ subject: item.subject || "", body: res.value || "", emailDate: created, choices: idChoices })
+        })
+        .then(function (r) { return r.json().then(function (d) { return { ok:r.ok, d:d }; }); })
+        .then(function (x) {
+          if (!x.ok) { setStatus("Error: " + (x.d.error || "request failed")); return; }
+          if (!x.d.result || !x.d.result.values) { setStatus("Could not parse a structured result - fill the form in by hand."); fillForm({}, []); return; }
+          setStatus("");
+          fillForm(x.d.result.values, x.d.result.flags || []);
+        })
+        .catch(function (e) { setStatus("Request failed: " + e); });
+      });
+    }
+
+    function fillForm(values, flags) {
+      localFlags = [];
+      FIELD_KEYS.forEach(function (k) {
+        var el = document.getElementById("f_" + k), v = values[k];
+        if (v === null || v === undefined) v = "";
+        if (el.tagName === "SELECT") {
+          if (v !== "" && (choices[k] || []).indexOf(v) < 0) {
+            localFlags.push("Proposed " + k + " \"" + v + "\" is not an allowed choice in QuickBase - pick one manually.");
+            v = "";
+          }
+        }
+        el.value = v;
+        markNeeds(k);
+      });
+      var box = document.getElementById("flags");
+      box.innerHTML = flags.concat(localFlags).map(function (f) { return "<div class='flag warn'>\u26A0 " + esc(f) + "</div>"; }).join("");
+      document.getElementById("formWrap").style.display = "block";
+    }
+
+    function markNeeds(k) {
+      var el = document.getElementById("f_" + k);
+      el.classList.toggle("needs", String(el.value).trim() === "");
+    }
+
+    function collect() {
+      var v = {};
+      FIELD_KEYS.forEach(function (k) { v[k] = document.getElementById("f_" + k).value; });
+      return v;
+    }
+
+    function createCommitment(force) {
+      var out = document.getElementById("createResult"), v = collect();
+      if (!v.name.trim() || !v.person.trim()) {
+        out.innerHTML = "<div class='flag bad'>Commitment name and person are required before creating.</div>"; return;
+      }
+      out.innerHTML = "<div class='flag warn'>Creating in QuickBase...</div>";
+      fetch(FUNC_QB, { method:"POST", headers:{ "Content-Type":"application/json" }, body: JSON.stringify({ mode:"create", values:v, force:force }) })
+        .then(function (r) { return r.json().then(function (d) { return { ok:r.ok, d:d }; }); })
+        .then(function (x) {
+          if (!x.ok) { out.innerHTML = "<div class='flag bad'>Could not create: " + esc(x.d.error || "request failed") + "</div>"; return; }
+          if (x.d.duplicate) {
+            out.innerHTML = "<div class='flag warn'>A commitment with this person and name already exists (<a href='" + esc(x.d.url) + "' target='_blank'>open it</a>).</div>" +
+              "<button id='forceBtn' class='secondary'>Create anyway</button>";
+            document.getElementById("forceBtn").addEventListener("click", function () { createCommitment(true); });
+            return;
+          }
+          out.innerHTML = "<div class='flag ok'>Created commitment #" + esc(x.d.recordId) + ". <a href='" + esc(x.d.url) + "' target='_blank'>Open the record</a> and use Add Payment there to enter the payment schedule.</div>";
+        })
+        .catch(function (e) { out.innerHTML = "<div class='flag bad'>Request failed: " + esc(String(e)) + "</div>"; });
+    }
+  </script>
+</body>
+</html>
