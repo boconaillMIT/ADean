@@ -37,7 +37,7 @@
   </style>
 </head>
 <body>
-  <h1>Email to Commitment <span style="color:var(--muted);font-size:11px;font-weight:normal;">v2026-09-28a</span></h1>
+  <h1>Email to Commitment <span style="color:var(--muted);font-size:11px;font-weight:normal;">v2026-09-28b</span></h1>
   <div class="hint">Reads the open email and proposes a Commitment record. Anything the email didn't state is left blank and highlighted.</div>
   <button id="extractBtn" disabled>Extract from this email</button>
   <div id="status">Loading...</div>
@@ -171,8 +171,8 @@
 
     function createCommitment(force) {
       var out = document.getElementById("createResult"), v = collect();
-      if (!v.name.trim() || !v.person.trim()) {
-        out.innerHTML = "<div class='flag bad'>Commitment name and person are required before creating.</div>"; return;
+      if (!v.name.trim()) {
+        out.innerHTML = "<div class='flag bad'>A commitment name is required before creating.</div>"; return;
       }
       out.innerHTML = "<div class='flag warn'>Creating in QuickBase...</div>";
       fetch(FUNC_QB, { method:"POST", headers:{ "Content-Type":"application/json" }, body: JSON.stringify({ mode:"create", values:v, force:force }) })
