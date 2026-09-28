@@ -5,24 +5,26 @@
 
   CHANGE LOG:
     1.0.0.0 (2026-09-28) — Initial version. One button opens commitment.html.
+    1.0.1.0 (2026-09-28) — Own icon set (envelope + dollar coin), commitment-icon-*.png.
+    1.0.2.0 (2026-09-28) — Icon URLs now point at the /icons/ folder under the site root.
 
   BEFORE SIDELOADING:
     1. Host commitment.html at the same place as waiver.html, and deploy the functions
        parley-commitment-extract and qb-commitment.
-    2. Icons below are PLACEHOLDERS (they reuse the waiver icons). Swap the three bt:Image
-       URLs for a distinct icon set when you have one.
+    2. Host commitment-icon-16/32/64/80/128.png in an icons folder directly under the site
+       root, so they resolve at https://waivercheck.netlify.app/icons/commitment-icon-NN.png
     3. Keep the <Id> GUID different from the other manifests. Bump <Version> on every change
        so Outlook doesn't serve a cached copy.
  -->
 <OfficeApp xmlns="http://schemas.microsoft.com/office/appforoffice/1.1" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xmlns:bt="http://schemas.microsoft.com/office/officeappbasictypes/1.0" xsi:type="MailApp">
 <Id>7d2f4a8c-3b1e-4f6a-9c05-2e8b7a1d0002</Id>
-<Version>1.0.0.0</Version>
+<Version>1.0.2.0</Version>
 <ProviderName>MIT School of Engineering</ProviderName>
 <DefaultLocale>en-US</DefaultLocale>
 <DisplayName DefaultValue="Email to Commitment"/>
 <Description DefaultValue="Reads a funding-commitment email and proposes a Commitment record in QuickBase for review before it is created."/>
-<IconUrl DefaultValue="https://waivercheck.netlify.app/icon-64.png"/>
-<HighResolutionIconUrl DefaultValue="https://waivercheck.netlify.app/icon-128.png"/>
+<IconUrl DefaultValue="https://waivercheck.netlify.app/icons/commitment-icon-64.png"/>
+<HighResolutionIconUrl DefaultValue="https://waivercheck.netlify.app/icons/commitment-icon-128.png"/>
 <SupportUrl DefaultValue="https://waivercheck.netlify.app/"/>
 <Hosts>
 <Host Name="Mailbox"/>
@@ -81,9 +83,9 @@
 </Hosts>
 <Resources>
 <bt:Images>
-<bt:Image id="icon16" DefaultValue="https://waivercheck.netlify.app/icon-16.png"/>
-<bt:Image id="icon32" DefaultValue="https://waivercheck.netlify.app/icon-32.png"/>
-<bt:Image id="icon80" DefaultValue="https://waivercheck.netlify.app/icon-80.png"/>
+<bt:Image id="icon16" DefaultValue="https://waivercheck.netlify.app/icons/commitment-icon-16.png"/>
+<bt:Image id="icon32" DefaultValue="https://waivercheck.netlify.app/icons/commitment-icon-32.png"/>
+<bt:Image id="icon80" DefaultValue="https://waivercheck.netlify.app/icons/commitment-icon-80.png"/>
 </bt:Images>
 <bt:Urls>
 <bt:Url id="commitmentUrl" DefaultValue="https://waivercheck.netlify.app/commitment.html"/>
