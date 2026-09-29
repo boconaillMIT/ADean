@@ -1,6 +1,6 @@
 /*
   qb-commitment.js
-  Netlify function (POST) for the Commitments table (br2xvzd7a).
+  Netlify function (POST) for the Commitments table (bs2metn5i).
 
     { mode: "choices" }
         -> { choices: { "<fieldId>": [allowed values] } } for the multiple-choice fields,
@@ -18,7 +18,7 @@
 */
 
 const REALM = "mit.quickbase.com";
-const TABLE_ID = "br2xvzd7a";
+const TABLE_ID = "bs2metn5i";  // Commitments table (br2xvzd7a is the app ID, not a table)
 
 const F = {
   fyStart: 6, years: 30, dateCommitted: 10, amount: 11, person: 28,
