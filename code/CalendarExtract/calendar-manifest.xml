@@ -10,7 +10,7 @@
   REQUIRES on the host site:
     - calendar.html at the site root
     - /.netlify/functions/parley-calendar-extract
-    - icon PNGs (16, 32, 64, 80, 128 px) at the site root
+    - calendar-write icon PNGs (16, 32, 80, 128 px) in the /icons folder
 
   NOTE: <Id> must stay different from the Research Tools manifest, or Outlook treats them
   as the same add-in and one replaces the other.
@@ -27,8 +27,8 @@
   <DefaultLocale>en-US</DefaultLocale>
   <DisplayName DefaultValue="Email to Calendar"/>
   <Description DefaultValue="Finds events in an email using Parley and opens them as prefilled calendar entries."/>
-  <IconUrl DefaultValue="https://waivercheck.netlify.app/icon-64.png"/>
-  <HighResolutionIconUrl DefaultValue="https://waivercheck.netlify.app/icon-128.png"/>
+  <IconUrl DefaultValue="https://waivercheck.netlify.app/icons/calendar-write-80.png"/>
+  <HighResolutionIconUrl DefaultValue="https://waivercheck.netlify.app/icons/calendar-write-128.png"/>
   <SupportUrl DefaultValue="https://waivercheck.netlify.app/"/>
 
   <Hosts>
@@ -94,9 +94,9 @@
     </Hosts>
     <Resources>
       <bt:Images>
-        <bt:Image id="icon16" DefaultValue="https://waivercheck.netlify.app/icon-16.png"/>
-        <bt:Image id="icon32" DefaultValue="https://waivercheck.netlify.app/icon-32.png"/>
-        <bt:Image id="icon80" DefaultValue="https://waivercheck.netlify.app/icon-80.png"/>
+        <bt:Image id="icon16" DefaultValue="https://waivercheck.netlify.app/icons/calendar-write-16.png"/>
+        <bt:Image id="icon32" DefaultValue="https://waivercheck.netlify.app/icons/calendar-write-32.png"/>
+        <bt:Image id="icon80" DefaultValue="https://waivercheck.netlify.app/icons/calendar-write-80.png"/>
       </bt:Images>
       <bt:Urls>
         <bt:Url id="calendarUrl" DefaultValue="https://waivercheck.netlify.app/calendar.html"/>

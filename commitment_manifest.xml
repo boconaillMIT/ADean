@@ -11,7 +11,7 @@
   BEFORE SIDELOADING:
     1. Host commitment.html at the same place as waiver.html, and deploy the functions
        parley-commitment-extract and qb-commitment.
-    2. Host commitment-icon-16/32/64/80/128.png in an icons folder directly under the site
+    2. Host commitment-icon-16/32/80/128.png in an icons folder directly under the site
        root, so they resolve at https://waivercheck.netlify.app/icons/commitment-icon-NN.png
     3. Keep the <Id> GUID different from the other manifests. Bump <Version> on every change
        so Outlook doesn't serve a cached copy.
@@ -23,7 +23,7 @@
 <DefaultLocale>en-US</DefaultLocale>
 <DisplayName DefaultValue="Email to Commitment"/>
 <Description DefaultValue="Reads a funding-commitment email and proposes a Commitment record in QuickBase for review before it is created."/>
-<IconUrl DefaultValue="https://waivercheck.netlify.app/icons/commitment-icon-64.png"/>
+<IconUrl DefaultValue="https://waivercheck.netlify.app/icons/commitment-icon-80.png"/>
 <HighResolutionIconUrl DefaultValue="https://waivercheck.netlify.app/icons/commitment-icon-128.png"/>
 <SupportUrl DefaultValue="https://waivercheck.netlify.app/"/>
 <Hosts>
