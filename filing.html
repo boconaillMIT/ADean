@@ -1,0 +1,122 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Suggest Filing Folder</title>
+  <script src="https://appsforoffice.microsoft.com/lib/1/hosted/office.js"></script>
+  <style>
+    :root { --accent:#075985; --ink:#172554; --muted:#52606d; --line:#cbd5e1; --panel:#f8fafc; }
+    body { font:14px/1.45 system-ui,-apple-system,"Segoe UI",sans-serif; color:var(--ink); margin:16px; }
+    h1 { font-size:18px; margin:0 0 4px; } p { color:var(--muted); margin:0 0 12px; }
+    label { display:block; font-weight:650; margin:14px 0 5px; }
+    textarea { box-sizing:border-box; width:100%; min-height:142px; resize:vertical; border:1px solid var(--line); border-radius:5px; padding:8px; font:13px/1.35 ui-monospace,Consolas,monospace; }
+    button { background:var(--accent); color:#fff; border:0; border-radius:5px; padding:8px 11px; font-weight:650; cursor:pointer; margin:8px 6px 0 0; }
+    button.secondary { color:var(--accent); background:#e0f2fe; } button:disabled { opacity:.55; cursor:default; }
+    #status { margin-top:12px; color:var(--muted); } .error { color:#b42318 !important; }
+    .card { margin-top:12px; padding:11px; border:1px solid var(--line); border-radius:6px; background:var(--panel); }
+    .folder { font-weight:750; font-size:15px; } .pill { display:inline-block; margin-left:6px; padding:1px 6px; border-radius:10px; background:#dbeafe; color:#1e3a8a; font-size:11px; text-transform:uppercase; }
+    .reason { color:#334155; margin:4px 0 0; } .note { font-size:12px; color:var(--muted); }
+  </style>
+</head>
+<body>
+  <h1>Suggest filing folder</h1>
+  <p>Reviews the open email and suggests folders from your approved list. It never moves an email.</p>
+
+  <label for="folders">Your filing folders</label>
+  <textarea id="folders" spellcheck="false" placeholder="Enter one Outlook folder path per line, for example:
+Finance/Invoices
+Projects/Apollo
+People/Faculty"></textarea>
+  <div class="note">Only folders in this list can be suggested. The list is saved to your Outlook profile.</div>
+  <button id="saveFolders" class="secondary" type="button">Save folder list</button>
+  <button id="suggest" type="button">Suggest folder</button>
+  <div id="status" role="status"></div>
+  <div id="results"></div>
+
+  <script>
+  (function () {
+    "use strict";
+    var STORE_KEY = "aiFilingFolderListV1";
+    var FUNCTION_URL = "/.netlify/functions/parley-filing-suggest";
+    var foldersEl = document.getElementById("folders");
+    var suggestEl = document.getElementById("suggest");
+    var statusEl = document.getElementById("status");
+    var resultsEl = document.getElementById("results");
+
+    function setStatus(message, isError) {
+      statusEl.textContent = message;
+      statusEl.className = isError ? "error" : "";
+    }
+    function escapeHtml(value) {
+      return String(value || "").replace(/[&<>\"]/g, function (c) {
+        return { "&":"&amp;", "<":"&lt;", ">":"&gt;", "\"":"&quot;" }[c];
+      });
+    }
+    function folders() {
+      var seen = {};
+      return foldersEl.value.split(/\r?\n/).map(function (line) { return line.trim(); })
+        .filter(function (line) {
+          var key = line.toLowerCase();
+          if (!line || seen[key]) return false;
+          seen[key] = true;
+          return true;
+        }).slice(0, 100);
+    }
+    function saveFolders() {
+      var list = folders();
+      foldersEl.value = list.join("\n");
+      Office.context.roamingSettings.set(STORE_KEY, list);
+      Office.context.roamingSettings.saveAsync(function (result) {
+        if (result.status === Office.AsyncResultStatus.Succeeded) setStatus("Saved " + list.length + " filing folder" + (list.length === 1 ? "" : "s") + ".");
+        else setStatus("Could not save the folder list: " + result.error.message, true);
+      });
+    }
+    function render(suggestions) {
+      resultsEl.innerHTML = suggestions.map(function (item) {
+        return '<section class="card"><div class="folder">' + escapeHtml(item.folder) +
+          '<span class="pill">' + escapeHtml(item.confidence) + '</span></div><p class="reason">' +
+          escapeHtml(item.reason) + '</p></section>';
+      }).join("");
+    }
+    function suggest() {
+      var list = folders();
+      resultsEl.innerHTML = "";
+      if (!list.length) { setStatus("Add at least one filing folder first.", true); return; }
+      saveFolders();
+      var item = Office.context.mailbox.item;
+      if (!item || !item.body) { setStatus("Open an email, then try again.", true); return; }
+      suggestEl.disabled = true;
+      setStatus("Reading this email and preparing suggestions...");
+      item.body.getAsync(Office.CoercionType.Text, function (bodyResult) {
+        if (bodyResult.status !== Office.AsyncResultStatus.Succeeded) {
+          suggestEl.disabled = false; setStatus("Could not read this email: " + bodyResult.error.message, true); return;
+        }
+        fetch(FUNCTION_URL, {
+          method: "POST", headers: { "Content-Type":"application/json" },
+          body: JSON.stringify({ subject: item.subject || "", body: bodyResult.value || "", folders: list })
+        }).then(function (response) {
+          return response.json().then(function (data) { return { ok:response.ok, data:data }; });
+        }).then(function (result) {
+          suggestEl.disabled = false;
+          if (!result.ok) { setStatus(result.data.error || "Could not generate a suggestion.", true); return; }
+          var suggestions = result.data.suggestions || [];
+          if (!suggestions.length) { setStatus("No confident suggestion. File this email manually."); return; }
+          render(suggestions);
+          setStatus("Review the suggestions, then move the email manually in Outlook.");
+        }).catch(function (error) {
+          suggestEl.disabled = false; setStatus("Request failed: " + error, true);
+        });
+      });
+    }
+    Office.onReady(function () {
+      var saved = Office.context.roamingSettings.get(STORE_KEY);
+      if (Array.isArray(saved)) foldersEl.value = saved.join("\n");
+      document.getElementById("saveFolders").addEventListener("click", saveFolders);
+      suggestEl.addEventListener("click", suggest);
+      setStatus("Add your filing folders, open an email, then choose Suggest folder.");
+    });
+  }());
+  </script>
+</body>
+</html>
