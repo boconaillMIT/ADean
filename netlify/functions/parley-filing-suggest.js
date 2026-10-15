@@ -31,8 +31,8 @@ function parseJson(text) {
 exports.handler = async (event) => {
   if (event.httpMethod === "OPTIONS") return reply(204, {});
   if (event.httpMethod !== "POST") return reply(405, { error: "Use POST" });
-  const apiKey = process.env.RESEARCH_APP_KEY;
-  if (!apiKey) return reply(500, { error: "RESEARCH_APP_KEY is not set in Netlify." });
+  const apiKey = process.env.PARLEY_RESEARCH_API_KEY;
+  if (!apiKey) return reply(500, { error: "PARLEY_RESEARCH_API_KEY is not set in Netlify." });
 
   let input;
   try { input = JSON.parse(event.body || "{}"); }

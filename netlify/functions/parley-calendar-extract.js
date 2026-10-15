@@ -124,7 +124,7 @@ exports.handler = async (event) => {
   if (event.httpMethod !== "POST") return jsonResponse(405, { error: "Use POST" });
 
   // Calendar uses its own key so its Parley usage is tracked separately from the research tools.
-  // No fallback to RESEARCH_APP_KEY on purpose: a silent fallback would mix the usage again.
+  // No fallback to PARLEY_RESEARCH_API_KEY on purpose: a silent fallback would mix the usage again.
   const apiKey = process.env.PARLEY_CALENDAR_API_KEY;
   if (!apiKey) return jsonResponse(500, { error: "PARLEY_CALENDAR_API_KEY is not set in Netlify environment variables" });
 
