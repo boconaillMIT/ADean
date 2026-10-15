@@ -3,9 +3,9 @@
 // QuickBase bridge for the waiver 3-per-fiscal-year rule.
 //   mode "count": how many waivers this PI (by Kerberos) already has in the current FY.
 //   mode "log":   create a new waiver row (dedup on KC Proposal Number).
-// QB_TOKEN lives in the Netlify environment, never client-side.
+// QB_RESEARCH_TOKEN lives in the Netlify environment, never client-side.
 //
-// Deploy: netlify/functions/qb-waiver.js   Env var: QB_TOKEN (a QuickBase user token
+// Deploy: netlify/functions/qb-waiver.js   Env var: QB_RESEARCH_TOKEN (a QuickBase user token
 // scoped to app bssjvdn99).
 
 const QB_REALM = "mit.quickbase.com";
@@ -38,8 +38,8 @@ exports.handler = async (event) => {
   if (event.httpMethod === "OPTIONS") return { statusCode: 204, headers: cors, body: "" };
   if (event.httpMethod !== "POST") return { statusCode: 405, headers: cors, body: JSON.stringify({ error: "Use POST" }) };
 
-  const token = process.env.QB_TOKEN;
-  if (!token) return { statusCode: 500, headers: cors, body: JSON.stringify({ error: "QB_TOKEN is not set in the Netlify environment." }) };
+  const token = process.env.QB_RESEARCH_TOKEN;
+  if (!token) return { statusCode: 500, headers: cors, body: JSON.stringify({ error: "QB_RESEARCH_TOKEN is not set in the Netlify environment." }) };
 
   let input;
   try { input = JSON.parse(event.body || "{}"); }

@@ -11,7 +11,7 @@
 
   BEFORE DEPLOYING:
     Set PARLEY_COMMITMENT_API_KEY in Netlify env vars (a key created for this tool, so its
-    usage is tracked separately). There is deliberately no fallback to PARLEY_API_KEY.
+    usage is tracked separately). There is deliberately no fallback to RESEARCH_APP_KEY.
     Environment variables only take effect on a new deploy.
 */
 
@@ -27,7 +27,7 @@ const MODEL = "bedrock/claude-sonnet-4-6";
 
 async function callParley(prompt) {
   // Own key so this tool's Parley usage is tracked separately (same approach as the calendar tool).
-  // No fallback to PARLEY_API_KEY on purpose: a silent fallback would mix the usage again.
+  // No fallback to RESEARCH_APP_KEY on purpose: a silent fallback would mix the usage again.
   const apiKey = process.env.PARLEY_COMMITMENT_API_KEY;
   if (!apiKey) throw new Error("PARLEY_COMMITMENT_API_KEY is not set in Netlify environment variables");
 

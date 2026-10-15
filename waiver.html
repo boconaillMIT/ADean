@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>SoE Request Pre-Check</title>
+  <title>Research Pre-Check</title>
   <script src="https://appsforoffice.microsoft.com/lib/1/hosted/office.js"></script>
   <style>
     :root {
@@ -56,7 +56,7 @@
   </style>
 </head>
 <body>
-  <h1>SoE Request Pre-Check <span style="color:var(--muted);font-size:11px;font-weight:normal;">v2026-09-27a</span></h1>
+  <h1>Research Pre-Check <span style="color:var(--muted);font-size:11px;font-weight:normal;">v2026-10-15</span></h1>
   <details id="pasteBox">
     <summary>Paste PDF / extra text (optional)</summary>
     <textarea id="pastedText" rows="6" placeholder="Paste the PDF text or any extra request content here. It will be included in the check."></textarea>
@@ -71,6 +71,7 @@
   <script>
     var FUNCTION_URL = "/.netlify/functions/parley-waiver-check";
     var QB_FUNCTION_URL = "/.netlify/functions/qb-waiver";
+    var QB_PI_SAVE_URL = "/.netlify/functions/qb-pi-status";
     var QB_OTPI_FUNCTION_URL = "/.netlify/functions/qb-otpi-history";
     var PLATA_EMAIL = "dplata@mit.edu";
     var SOE_RESEARCH = "soe-research@mit.edu";
@@ -137,6 +138,7 @@
       "We appreciate your cooperation and understanding.<br><br>Best,";
 
     var lastResult = null;
+    var lastRequestEmail = null;
     var currentApprovalBody = "";
     var lastOtpiHistory = null;
 
@@ -148,6 +150,10 @@
     });
 
     function runCheck() {
+      document.getElementById("checkBtn").disabled = true;
+      document.getElementById("results").innerHTML = "";
+      lastResult = null;
+      lastRequestEmail = null;
       document.getElementById("draftArea").innerHTML = "";
       lastOtpiHistory = null;
       var item = Office.context.mailbox.item;
@@ -157,6 +163,7 @@
       setStatus("Reading email...");
       item.body.getAsync(Office.CoercionType.Text, function (res) {
         if (res.status !== Office.AsyncResultStatus.Succeeded) {
+          document.getElementById("checkBtn").disabled = false;
           setStatus("Could not read the email body: " + res.error.message); return;
         }
         var body = res.value || "";
@@ -169,9 +176,13 @@
         .then(function (r) { return r.json().then(function (d) { return { ok:r.ok, d:d }; }); })
         .then(function (x) {
           if (!x.ok) { setStatus("Error: " + (x.d.error || "request failed") + (x.d.detail ? " - " + x.d.detail : "")); return; }
+          lastRequestEmail = { subject: subject, body: body,
+            date: item.dateTimeCreated && !isNaN(new Date(item.dateTimeCreated).getTime())
+              ? new Date(item.dateTimeCreated).toISOString().slice(0, 10) : "" };
           lastResult = x.d.result; render(x.d);
         })
-        .catch(function (e) { setStatus("Request failed: " + e); });
+        .catch(function (e) { setStatus("Request failed: " + e); })
+        .finally(function () { document.getElementById("checkBtn").disabled = false; });
       });
     }
 
@@ -187,7 +198,7 @@
       }
       var r = data.result, html = "";
       if (r.waiver) html += renderWaiver(r.waiver);
-      if (r.one_time_pi) html += renderOtpi(r.one_time_pi);
+      if (r.one_time_pi) html += renderOtpi(r.one_time_pi) + renderPiSave(r.one_time_pi);
       if (!r.waiver && !r.one_time_pi) {
         html += "<div class='verdict bad'>No waiver or one-time-PI request identified. If the details are in an attached PDF, paste its text above and run again.</div>";
       }
@@ -205,7 +216,7 @@
                 "<button id='oPlata'>One-time PI: recommend to Prof. Plata</button>";
       }
       var draft = document.getElementById("draftArea");
-      draft.innerHTML = btns ? ("<hr><div class='section-label'>Draft a reply</div>" + btns + "<div id='previewWrap'></div>") : "";
+      draft.innerHTML = btns ? ("<hr><div class='section-label'>Email actions</div>" + btns + "<div id='previewWrap'></div>") : "";
       if (r.waiver) {
         document.getElementById("wApprove").addEventListener("click", draftWaiverApproval);
         document.getElementById("wMissing").addEventListener("click", draftWaiverMissing);
@@ -214,6 +225,8 @@
         if (clb) clb.addEventListener("click", checkWaiverLimit);
       }
       if (r.one_time_pi) {
+        document.getElementById("piSaveForm").addEventListener("submit", savePiStatus);
+        document.getElementById("piDecision").addEventListener("change", updatePiDecisionDate);
         document.getElementById("oReturn").addEventListener("click", draftOtpiReturn);
         document.getElementById("oPlata").addEventListener("click", draftOtpiPlata);
         var ohb = document.getElementById("checkOtpiHistoryBtn");
@@ -386,18 +399,13 @@
         fr("Prior requests / awarded", (f.prior_requests==null?"?":f.prior_requests)+" / "+(f.prior_awarded==null?"?":f.prior_awarded));
       var facts = factRows.length ? ("<div class='facts'>"+factRows.join("<br>")+"</div>") : "";
 
-      // Prior PI-status history lookup (standard track only) - QB-sourced, replaces the old
-      // submitter-reported B6 line. Kept as a distinct, deliberate lookup (not auto-run) since
-      // it needs a Kerberos the email rarely states.
-      var historyUI = "";
-      if (type === "standard") {
-        historyUI =
+      // Every requester type can be checked and logged, including post-tenure faculty.
+      var historyUI =
           "<div class='section-label'>Prior PI-status history (from QuickBase)</div>" +
           "<div style='font-size:13px;'>Researcher Kerberos: " +
           "<input class='cc' id='otpiKerbField' type='text' placeholder='e.g. jsmith' style='width:auto; display:inline-block; min-width:120px;'/></div>" +
           "<button id='checkOtpiHistoryBtn' class='secondary'>Check prior PI-status history</button>" +
           "<div id='otpiHistoryResult'></div>";
-      }
 
       var reminder = "";
       if (type === "standard") {
@@ -410,6 +418,91 @@
 
       return "<h2>One-time PI/Co-PI Status Request</h2>" + banner + v + fieldList + checks + facts + historyUI + reminder;
     }
+
+    function renderPiSave(o) {
+      var f = o.facts || {}, source = lastRequestEmail || {};
+      function input(id, label, value, type, required, extra) {
+        return "<label style='display:block;margin-top:8px;' for='" + id + "'>" + label + (required ? " *" : "") + "</label>" +
+          "<input class='cc' id='" + id + "' type='" + (type || "text") + "' value='" + escapeAttr(value == null ? "" : value) + "'" +
+          (required ? " required" : "") + (extra || "") + "/>";
+      }
+      var today = new Date().toISOString().slice(0, 10);
+      var notes = ["Requester type: " + OTPI_TYPE_LABEL[otpiType(o)],
+        f.proposed_pi ? "Researcher: " + f.proposed_pi : "",
+        f.proposal_title ? "Proposal: " + f.proposal_title : "",
+        f.dlc ? "DLC: " + f.dlc : "", f.sponsor ? "Sponsor: " + f.sponsor : "",
+        f.salary_support ? "Salary support: " + f.salary_support : ""].filter(Boolean).join("\n");
+      return "<hr><h2>Add PI-status request to QuickBase</h2>" +
+        "<p>Review the fields below, then save without drafting an email. Approval is your choice; requester type and department endorsement do not automatically approve a request.</p>" +
+        "<p class='reminder'>* Required. Enter multiple-choice values exactly as listed in QuickBase.</p>" +
+        "<form id='piSaveForm'>" +
+        input("piResearcher", "PI status requested for (Last, First; QuickBase choice)", f.proposed_pi || "", "text", true) +
+        input("piFirst", "Researcher first name", "", "text", false) +
+        input("piLast", "Researcher last name", "", "text", false) +
+        input("piMentor", "Lead PI / Supervisor / Mentor (QuickBase choice)", f.working_with_pi || "", "text", true) +
+        input("piTitle", "Proposal title", f.proposal_title || "", "text", false) +
+        input("piNumber", "Proposal number", "", "text", false) +
+        input("piSponsor", "Sponsor (QuickBase choice)", f.sponsor || "", "text", false) +
+        input("piDepartment", "Department (QuickBase choice)", f.dlc || "", "text", false) +
+        input("piStart", "Proposal start date", f.proposal_start_date || "", "date", false) +
+        input("piEnd", "Proposal end date", "", "date", false) +
+        input("piRequested", "Date of request", source.date || today, "date", true) +
+        input("piSubject", "Source email subject", source.subject || "", "text", true) +
+        input("piEmailDate", "Source email date", source.date || "", "date", true) +
+        input("piEffort", "Effort (%)", typeof f.effort_percent === "number" ? f.effort_percent : "", "number", false, " min='0' max='100' step='any'") +
+        input("piTotal", "Total proposal value ($)", "", "number", false, " min='0' step='any'") +
+        input("piEndorsement", "DLC Head endorsement (QuickBase choice, optional)", "", "text", false) +
+        "<label style='display:block;margin-top:8px;' for='piReason'>Reason for request</label><textarea id='piReason' rows='3'>" + escapeHtml(f.reason_summary || "") + "</textarea>" +
+        "<label style='display:block;margin-top:8px;' for='piNotes'>Detailed notes</label><textarea id='piNotes' rows='5'>" + escapeHtml(notes) + "</textarea>" +
+        "<label style='display:block;margin-top:8px;' for='piDecision'>Decision *</label>" +
+        "<select id='piDecision' required><option value=''>Choose a decision</option><option value='pending'>Pending review</option><option value='approved'>Approved (confirmed by reviewer)</option><option value='denied'>Not approved (confirmed by reviewer)</option></select>" +
+        "<div id='piDecisionDateWrap' hidden>" + input("piDecisionDate", "Decision date", today, "date", false) + "</div>" +
+        "<p class='reminder'>Enter the researcher Kerberos in the history section above. The source email text and any pasted attachment text will be saved with this record.</p>" +
+        "<button id='piSaveBtn' type='submit'>Add PI status request to QB — no email</button>" +
+        "<div id='piSaveResult' role='status' aria-live='polite'></div></form>";
+    }
+
+    function updatePiDecisionDate() {
+      var decided = ["approved", "denied"].indexOf(document.getElementById("piDecision").value) >= 0;
+      document.getElementById("piDecisionDateWrap").hidden = !decided;
+      document.getElementById("piDecisionDate").required = decided;
+    }
+
+    async function savePiStatus(event) {
+      event.preventDefault();
+      var btn = document.getElementById("piSaveBtn"), out = document.getElementById("piSaveResult");
+      if (btn.disabled) return;
+      function value(id) { return document.getElementById(id).value.trim(); }
+      var kerb = value("otpiKerbField");
+      if (!kerb) { out.textContent = "Enter the researcher's Kerberos in the history section above before saving."; return; }
+      if (!lastResult || !lastResult.one_time_pi || !lastRequestEmail) { out.textContent = "Check the request again before saving."; return; }
+      if (!document.getElementById("piSaveForm").reportValidity()) return;
+      var payload = { kerberos: kerb, firstName: value("piFirst"), lastName: value("piLast"), mentor: value("piMentor"),
+        researcher: value("piResearcher"), proposalTitle: value("piTitle"), proposalNumber: value("piNumber"),
+        sponsor: value("piSponsor"), department: value("piDepartment"), proposalStart: value("piStart"), proposalEnd: value("piEnd"),
+        dateOfRequest: value("piRequested"), emailSubject: value("piSubject"), emailDate: value("piEmailDate"),
+        emailBody: lastRequestEmail.body, effortPercent: value("piEffort") === "" ? null : Number(value("piEffort")),
+        totalProposalValue: value("piTotal") === "" ? null : Number(value("piTotal")),
+        endorsement: value("piEndorsement"), reason: value("piReason"), notes: value("piNotes"),
+        decision: value("piDecision"), decisionDate: value("piDecisionDate") };
+      btn.disabled = true;
+      out.textContent = "Saving PI-status request to QuickBase...";
+      try {
+        var response = await fetch(QB_PI_SAVE_URL, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(payload) });
+        var data = await response.json();
+        out.textContent = response.ok ? data.message : (data.error || "QuickBase save failed.");
+        if (Number.isSafeInteger(data.recordId) && data.recordId > 0) {
+          var link = document.createElement("a");
+          link.href = "https://mit.quickbase.com/db/bsskfjj57?a=dr&rid=" + data.recordId;
+          link.textContent = " Open PI-status record"; link.target = "_blank"; link.rel = "noopener noreferrer";
+          out.appendChild(link);
+        }
+        if (data.created) lastOtpiHistory = null;
+      } catch (error) { out.textContent = "Save could not be confirmed. Check QuickBase before retrying."; }
+      finally { btn.disabled = false; }
+    }
+
+    function escapeAttr(s) { return escapeHtml(s).replace(/'/g, "&#39;").replace(/"/g, "&quot;"); }
 
     function checkOtpiHistory() {
       var el = document.getElementById("otpiKerbField");

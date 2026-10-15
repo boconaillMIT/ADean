@@ -12,8 +12,8 @@
            returns { duplicate: true, recordId } instead of creating another. Only the name is required (a commitment can be for a project, not a person).
 
   TOKEN: this table's ID starts with "br" (the Waiver/PI Status tables start with "bss"),
-  so it is probably in a different QuickBase app. Set QB_COMMITMENTS_TOKEN in Netlify env
-  (a user token with access to that app). If it is not set, this falls back to QB_TOKEN,
+  so it is probably in a different QuickBase app. Set QB_FINANCE_TOKEN in Netlify env
+  (a user token with access to that app). If it is not set, this falls back to QB_RESEARCH_TOKEN,
   which only works if that token also covers this app.
 */
 
@@ -31,7 +31,7 @@ const CHOICE_IDS = [F.fyStart, F.department, F.generalCategory, F.detailedCatego
 function qbHeaders() {
   return {
     "QB-Realm-Hostname": REALM,
-    "Authorization": "QB-USER-TOKEN " + (process.env.QB_COMMITMENTS_TOKEN || process.env.QB_TOKEN),
+    "Authorization": "QB-USER-TOKEN " + (process.env.QB_FINANCE_TOKEN || process.env.QB_RESEARCH_TOKEN),
     "Content-Type": "application/json"
   };
 }

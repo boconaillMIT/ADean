@@ -1,6 +1,6 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <!--
-  Waiver Pre-Check — Outlook add-in manifest (XML / add-in manifest).
+  Research Pre-Check — Outlook add-in manifest (XML / add-in manifest).
   Works in new Outlook for Windows, classic Outlook, Outlook on the web, and Mac.
 
   BEFORE SIDELOADING:
@@ -18,11 +18,11 @@
   xsi:type="MailApp">
 
   <Id>4b6c2e1a-9f3d-4c7a-8e21-7c1a9f0d0001</Id>
-  <Version>1.0.0.0</Version>
+  <Version>1.0.1.0</Version>
   <ProviderName>MIT School of Engineering</ProviderName>
   <DefaultLocale>en-US</DefaultLocale>
-  <DisplayName DefaultValue="Waiver Pre-Check"/>
-  <Description DefaultValue="Checks a Proposal Waiver Request against the SOE-research rubric via Parley."/>
+  <DisplayName DefaultValue="Research Pre-Check"/>
+  <Description DefaultValue="Checks proposal waiver and PI-status requests against the SOE-research rubric via Parley."/>
   <IconUrl DefaultValue="https://waivercheck.netlify.app/icons/icon-64.png"/>
   <HighResolutionIconUrl DefaultValue="https://waivercheck.netlify.app/icons/icon-128.png"/>
   <SupportUrl DefaultValue="https://waivercheck.netlify.app/"/>
@@ -98,11 +98,11 @@
         <bt:Url id="taskpaneUrl" DefaultValue="https://waivercheck.netlify.app/waiver.html"/>
       </bt:Urls>
       <bt:ShortStrings>
-        <bt:String id="groupLabel" DefaultValue="Waiver Tools"/>
-        <bt:String id="btnLabel" DefaultValue="Waiver Pre-Check"/>
+        <bt:String id="groupLabel" DefaultValue="Research Tools"/>
+        <bt:String id="btnLabel" DefaultValue="Research Pre-Check"/>
       </bt:ShortStrings>
       <bt:LongStrings>
-        <bt:String id="btnTip" DefaultValue="Check this Proposal Waiver Request against the SOE-research rubric."/>
+        <bt:String id="btnTip" DefaultValue="Check this proposal waiver or PI-status request against the SOE-research rubric."/>
       </bt:LongStrings>
     </Resources>
   </VersionOverrides>

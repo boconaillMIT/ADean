@@ -5,7 +5,7 @@
 //   - "waiver"       : Proposal Waiver Request (7 presence checks)
 //   - "one_time_pi"  : One-time PI/Co-PI status request. Requester-type aware:
 //                      standard | incoming_faculty | emeritus (inferred, no flag).
-// An email may contain one or both. PARLEY_API_KEY stays server-side.
+// An email may contain one or both. RESEARCH_APP_KEY stays server-side.
 
 const PARLEY_URL = "https://parley.api.mit.edu/v1/chat/completions";
 const MODEL = "bedrock/claude-sonnet-4-6";
@@ -113,9 +113,9 @@ exports.handler = async (event) => {
   if (event.httpMethod === "OPTIONS") return { statusCode: 204, headers: cors, body: "" };
   if (event.httpMethod !== "POST") return { statusCode: 405, headers: cors, body: JSON.stringify({ error: "Use POST" }) };
 
-  const apiKey = process.env.PARLEY_API_KEY;
+  const apiKey = process.env.RESEARCH_APP_KEY;
   if (!apiKey) {
-    return { statusCode: 500, headers: cors, body: JSON.stringify({ error: "PARLEY_API_KEY is not set in the Netlify environment." }) };
+    return { statusCode: 500, headers: cors, body: JSON.stringify({ error: "RESEARCH_APP_KEY is not set in the Netlify environment." }) };
   }
 
   let subject = "", body = "";

@@ -114,8 +114,8 @@ exports.handler = async (event) => {
   // Step 1: validate request
   if (event.httpMethod !== "POST") return jsonResponse(405, { error: "Use POST" });
 
-  const apiKey = process.env.PARLEY_API_KEY;
-  if (!apiKey) return jsonResponse(500, { error: "PARLEY_API_KEY is not set in Netlify environment variables" });
+  const apiKey = process.env.RESEARCH_APP_KEY;
+  if (!apiKey) return jsonResponse(500, { error: "RESEARCH_APP_KEY is not set in Netlify environment variables" });
 
   let input;
   try {

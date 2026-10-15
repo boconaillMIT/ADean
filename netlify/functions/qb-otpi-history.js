@@ -3,7 +3,7 @@
   Netlify function — reads prior one-time PI/Co-PI status request history
   for a given PI, keyed on Kerberos, from the QuickBase "PI Status" table.
 
-  Table: bsskfjj57 (Sponsored Research app — same app/QB_TOKEN as Waivers)
+  Table: bsskfjj57 (Sponsored Research app — same app/QB_RESEARCH_TOKEN as Waivers)
   Realm: mit.quickbase.com
 
   Field IDs used:
@@ -22,7 +22,7 @@
     - successRate: approved / count, rounded to 2 decimals; null if count = 0
 
   BEFORE DEPLOYING:
-    1. Reuses the existing QB_TOKEN Netlify env var (same app as Waivers) —
+    1. Reuses the existing QB_RESEARCH_TOKEN Netlify env var (same app as Waivers) —
        no new token needed.
     2. This is a READ-only function — safe to call automatically (e.g. on
        blur of a Kerberos field), unlike the Waiver table's write/log step.
@@ -57,7 +57,7 @@ exports.handler = async function (event) {
       method: "POST",
       headers: {
         "QB-Realm-Hostname": "mit.quickbase.com",
-        "Authorization": `QB-USER-TOKEN ${process.env.QB_TOKEN}`,
+        "Authorization": `QB-USER-TOKEN ${process.env.QB_RESEARCH_TOKEN}`,
         "Content-Type": "application/json"
       },
       body: JSON.stringify({
