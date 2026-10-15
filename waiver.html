@@ -56,7 +56,7 @@
   </style>
 </head>
 <body>
-  <h1>Research Pre-Check <span style="color:var(--muted);font-size:11px;font-weight:normal;">v2026-10-15b</span></h1>
+  <h1>Research Pre-Check <span style="color:var(--muted);font-size:11px;font-weight:normal;">v2026-10-15c</span></h1>
   <details id="pasteBox">
     <summary>Paste PDF / extra text (optional)</summary>
     <textarea id="pastedText" rows="6" placeholder="Paste the PDF text or any extra request content here. It will be included in the check."></textarea>
@@ -512,12 +512,14 @@
       var kerb = el ? el.value.trim() : "";
       var out = document.getElementById("otpiHistoryResult");
       if (!kerb) { out.innerHTML = "<div class='flag warn'>Enter the researcher's Kerberos to check prior history.</div>"; return; }
+      lastOtpiHistory = null;
       out.innerHTML = "<div class='flag warn'>Checking QuickBase...</div>";
       fetch(QB_OTPI_FUNCTION_URL, { method:"POST", headers:{ "Content-Type":"application/json" }, body: JSON.stringify({ kerberos: kerb }) })
         .then(function (r) { return r.json().then(function (d) { return { ok:r.ok, d:d }; }); })
         .then(function (x) {
           if (!x.ok || x.d.error || x.d.count === null) {
-            out.innerHTML = "<div class='flag warn'>Couldn't retrieve prior history right now - you can still draft the recommendation; omit or confirm the prior-history line manually.</div>";
+            var message = x.d.message || "Couldn't retrieve prior history right now. Check Netlify's function logs.";
+            out.innerHTML = "<div class='flag warn'>" + escapeHtml(message) + " You can still draft the recommendation; omit or confirm the prior-history line manually.</div>";
             lastOtpiHistory = null;
             return;
           }

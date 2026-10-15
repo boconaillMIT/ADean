@@ -32,62 +32,53 @@
        "not yet decided" rather than lumping them together as this stands.
 */
 
+const headers = { "Content-Type": "application/json", "Access-Control-Allow-Origin": "*",
+  "Access-Control-Allow-Headers": "Content-Type", "Access-Control-Allow-Methods": "POST, OPTIONS" };
+function reply(statusCode, body) { return { statusCode, headers, body: JSON.stringify(body) }; }
+function failure(statusCode, error, message) {
+  return reply(statusCode, { count: null, approved: null, denied: null, successRate: null, error, message });
+}
+
 exports.handler = async function (event) {
-  if (event.httpMethod !== "POST") {
-    return { statusCode: 405, body: "Method Not Allowed" };
+  if (event.httpMethod === "OPTIONS") return reply(204, {});
+  if (event.httpMethod !== "POST") return reply(405, { error: "Use POST" });
+  let input;
+  try { input = JSON.parse(event.body || "{}"); }
+  catch { return reply(400, { error: "Invalid JSON body" }); }
+  const kerberos = typeof input?.kerberos === "string" ? input.kerberos.trim().toLowerCase() : "";
+  if (!/^[a-z0-9_-]+$/.test(kerberos)) {
+    return reply(400, { error: "invalid_kerberos", message: "Enter a Kerberos username (for example, jsmith), not an email address." });
   }
-
-  let kerberos;
-  try {
-    ({ kerberos } = JSON.parse(event.body || "{}"));
-  } catch (e) {
-    return { statusCode: 400, body: JSON.stringify({ error: "Invalid JSON body" }) };
-  }
-
-  if (!kerberos || !kerberos.trim()) {
-    return { statusCode: 400, body: JSON.stringify({ error: "kerberos is required" }) };
-  }
-
-  const TABLE_ID = "bsskfjj57";
-  const KERBEROS_FIELD = 56;
-  const APPROVAL_FIELD = 37;
+  const token = process.env.QB_RESEARCH_TOKEN;
+  if (!token) return failure(500, "missing_token",
+    "QB_RESEARCH_TOKEN is not set for this Netlify function. Set it in Netlify's production environment and redeploy.");
 
   try {
-    const qbResp = await fetch("https://api.quickbase.com/v1/records/query", {
+    const response = await fetch("https://api.quickbase.com/v1/records/query", {
       method: "POST",
-      headers: {
-        "QB-Realm-Hostname": "mit.quickbase.com",
-        "Authorization": `QB-USER-TOKEN ${process.env.QB_RESEARCH_TOKEN}`,
-        "Content-Type": "application/json"
-      },
-      body: JSON.stringify({
-        from: TABLE_ID,
-        select: [3, KERBEROS_FIELD, APPROVAL_FIELD],
-        where: `{${KERBEROS_FIELD}.EX.'${kerberos.trim()}'}`
-      })
+      headers: { "QB-Realm-Hostname": "mit.quickbase.com", "Authorization": "QB-USER-TOKEN " + token,
+        "Content-Type": "application/json" },
+      body: JSON.stringify({ from: "bsskfjj57", select: [3, 56, 37], where: "{56.EX.'" + kerberos + "'}" })
     });
-
-    if (!qbResp.ok) {
-      const errText = await qbResp.text();
-      throw new Error(`QuickBase returned ${qbResp.status}: ${errText}`);
+    if (!response.ok) {
+      // Do not return or log raw upstream responses, headers or credentials.
+      console.error("qb-otpi-history: QuickBase HTTP " + response.status);
+      if (response.status === 401) return failure(502, "invalid_token",
+        "QuickBase rejected the research user token (HTTP 401). Update QB_RESEARCH_TOKEN in Netlify and redeploy.");
+      if (response.status === 403) return failure(502, "access_denied",
+        "The Netlify research token cannot read the PI Status table (QuickBase HTTP 403). Check token app access and user permissions.");
+      if (response.status === 429) return failure(503, "rate_limited", "QuickBase is rate-limiting requests. Try the history check again later.");
+      return failure(502, "query_failed", "QuickBase history query failed (HTTP " + response.status + "). Check table bsskfjj57 and fields 56 and 37.");
     }
-
-    const data = await qbResp.json();
-    const rows = data.data || [];
+    const data = await response.json();
+    if (!Array.isArray(data.data)) return failure(502, "invalid_response", "QuickBase returned an unexpected history response. Try again later.");
+    const rows = data.data;
     const count = rows.length;
-    const approved = rows.filter(r => r[APPROVAL_FIELD] && r[APPROVAL_FIELD].value === true).length;
-    const denied = count - approved;
-    const successRate = count > 0 ? Math.round((approved / count) * 100) / 100 : null;
-
-    return {
-      statusCode: 200,
-      body: JSON.stringify({ count, approved, denied, successRate })
-    };
-  } catch (err) {
-    console.error("qb-otpi-history failed:", err);
-    return {
-      statusCode: 200,
-      body: JSON.stringify({ count: null, approved: null, denied: null, successRate: null, error: "lookup_failed" })
-    };
+    const approved = rows.filter(row => row[37]?.value === true).length;
+    return reply(200, { count, approved, denied: count - approved,
+      successRate: count ? Math.round(approved / count * 100) / 100 : null });
+  } catch {
+    console.error("qb-otpi-history: request or response processing failed");
+    return failure(502, "connection_failed", "The Netlify function could not complete the QuickBase history request. Check its function logs and try again.");
   }
 };
