@@ -1,6 +1,6 @@
 # PI-status saves from Research Pre-Check
 
-After checking an email, every PI-status requester type has an **Add PI-status request to QuickBase** form. Review the extracted values, enter the researcher Kerberos, the required PI-requested-for and lead PI/mentor choices, and explicitly choose a decision. Saving does not open, draft, or send an email. The existing email actions remain separate. Post-tenure status and department endorsement do not trigger automatic approval.
+After checking an email, every PI-status requester type has an **Add PI-status request to QuickBase** form. Review the extracted values, enter the researcher Kerberos in the labeled field at the top of the save form, the required PI-requested-for and lead PI/mentor choices, and explicitly choose a decision. Saving does not open, draft, or send an email. The existing email actions remain separate. Post-tenure status and department endorsement do not trigger automatic approval.
 
 Use exact existing QuickBase multiple-choice values. The required fields marked in the supplied table screenshots are lead PI/mentor (20) and PI requested for (22). The app also requires Kerberos, source email subject/date and request date to identify the record and detect retries. Optional text fields can be edited before saving. Source email text includes any pasted attachment text supplied to the check.
 
