@@ -36,7 +36,7 @@ Open `http://127.0.0.1:8787`. Outside Outlook, expand **Email text** and paste t
 
 ## Deploy alongside the existing add-ins
 
-1. Copy `account.html`, `account.css`, `account.js`, `account_manifest.xml`, `icons/account-icon-*.png`, `netlify/functions/qb-account.js`, `netlify/functions/parley-account-extract.js`, and `netlify/functions/lib/accounts.js` into the existing ADean site's corresponding folders. Preserve its existing files and configuration. Alternatively deploy this project as a separate Netlify site.
+1. Copy `account.html`, `account.css`, `account.js`, `account_manifest.xml`, `icons/fund-account-*.png`, `netlify/functions/qb-account.js`, `netlify/functions/parley-account-extract.js`, and `netlify/functions/lib/accounts.js` into the existing ADean site's corresponding folders. Preserve its existing files and configuration. Alternatively deploy this project as a separate Netlify site.
 2. Set **QB_FINANCE_TOKEN** in the server-side Netlify environment to a Quickbase user token with read-field, query, and create permissions for Accounts. Never put tokens in browser code.
 3. Set **PARLEY_FINANCE_API_KEY** to the shared finance MIT Parley key. It does not fall back to other Parley keys. Email-only standard notices work without Parley; missing or failed PDF interpretation is clearly flagged for manual entry.
 4. The included manifest targets the existing `https://waivercheck.netlify.app` host. If deploying elsewhere, replace that origin in every manifest URL. It has its own add-in ID and uses `ReadItem` permission. Increment the manifest version when changing it.
@@ -52,3 +52,13 @@ The test suite covers the exact sample, ambiguous multi-fund threads, absent Par
 
 - [Microsoft Outlook add-in APIs](https://learn.microsoft.com/en-us/office/dev/add-ins/outlook/apis)
 - [Quickbase REST API](https://developer.quickbase.com/)
+
+## Deployment status — October 16, 2026
+
+Deployed to https://waivercheck.netlify.app/account.html from ADean commit `373af9ca357e9aa21a30a039380f6fdc089db3a8`. Live Quickbase field loading and Parley PDF-text extraction were verified without creating records. Production uses the existing `QB_FINANCE_TOKEN` and `PARLEY_FINANCE_API_KEY`.
+
+For mailbox installation, open https://aka.ms/olksideload, select **My add-ins → Custom Addins → Add a custom add-in → Add from File**, and select the local `account_manifest.xml`. In classic Outlook, **File → Info → Manage Add-ins** also opens the installation dialog. The modern Apps catalog is a different screen and may not expose custom XML installation. Mailbox installation has not yet been confirmed.
+
+## Save and icon update — version 1.0.1.0
+
+Creation uses Quickbase API_AddRecord (insert-only), after a duplicate lookup. Each Quickbase request has a ten-second timeout. Save progress and errors appear beside the Create button, and the read-only Check for existing account action can confirm the fund before retrying. The custom ledger/checkmark icons have new filenames to avoid cached dollar-sign icons. Reinstall the updated manifest to refresh Outlook ribbon icons; the hosted save fix takes effect when the pane reloads.

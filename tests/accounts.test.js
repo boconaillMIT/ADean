@@ -19,7 +19,7 @@ const liveFields = Object.values(FIELDS).map(f => ({ id: f.id, properties: { cho
 const ok = data => ({ ok: true, json: async () => data });
 function mockQB(callback) {
   process.env.QB_FINANCE_TOKEN = 'test-token';
-  global.fetch = async (url, options) => url.includes('/fields?') ? ok(liveFields) : callback(url, JSON.parse(options.body));
+  global.fetch = async (url, options) => url.includes('/fields?') ? ok(liveFields) : callback(url, url.includes('api.quickbase.com') ? JSON.parse(options.body) : options.body);
 }
 test('sample extracts only explicit identity and flags created OR updated', () => {
   const parsed = parseNotice(sample);
@@ -74,12 +74,15 @@ test('failed duplicate lookup prevents creation', async () => {
   assert.equal((await handler(event({ mode: 'create', values: { fundNumber: '3947890', name: 'Quantum' } }))).statusCode, 502);
   assert.equal(calls, 1);
 });
-test('create uses Record ID merge, mapped allowlist, and no balances', async () => {
+test('create uses insert-only API with mapped fields and no balances', async () => {
   mockQB((url, payload) => {
     if (url.endsWith('/query')) return ok({ data: [] });
-    assert.equal(payload.to, 'br2xvsvpw'); assert.equal(payload.mergeFieldId, 3);
-    assert.deepEqual(payload.data, [{ 7: { value: '3947890' }, 8: { value: 'Quantum' }, 20: { value: 'Fellowships' } }]);
-    return ok({ metadata: { createdRecordIds: [101] } });
+    assert.equal(url, 'https://mit.quickbase.com/db/br2xvsvpw');
+    assert.match(payload, /<field fid="7">3947890<\/field>/);
+    assert.match(payload, /<field fid="8">Quantum<\/field>/);
+    assert.match(payload, /<field fid="20">Fellowships<\/field>/);
+    assert.doesNotMatch(payload, /amount|mergeFieldId|500000/);
+    return { ok: true, text: async () => '<qdbapi><errcode>0</errcode><rid>101</rid></qdbapi>' };
   });
   const data = result(await handler(event({ mode: 'create', values: { fundNumber: '3947890', name: 'Quantum', description: 'Fellowships', amount: '500000' } })));
   assert.equal(data.created, true); assert.equal(data.recordId, 101);
@@ -90,8 +93,39 @@ test('invalid choices and fund numbers never query or write records', async () =
     assert.equal((await handler(event({ mode: 'create', values }))).statusCode, 400);
   }
 });
-test('Quickbase per-record errors are not reported as success', async () => {
-  mockQB(url => url.endsWith('/query') ? ok({ data: [] }) : ok({ metadata: { lineErrors: { 1: ['unique key exists'] } } }));
+test('insert-only API rejection never reports success', async () => {
+  mockQB(url => url.endsWith('/query') ? ok({ data: [] }) : { ok: true, text: async () => '<qdbapi><errcode>51</errcode><errtext>Unique field contains duplicate data</errtext></qdbapi>' });
   const response = await handler(event({ mode: 'create', values: { fundNumber: '3947890', name: 'Quantum' } }));
-  assert.equal(response.statusCode, 422); assert.equal(result(response).created, undefined);
+  assert.equal(response.statusCode, 502); assert.equal(result(response).created, undefined);
+  assert.match(result(response).error, /duplicate data/);
+});
+test('insert escapes source text and requires a confirmed record ID', async () => {
+  mockQB((url,payload) => {
+    if (url.endsWith('/query')) return ok({data:[]});
+    assert.match(payload, /Quantum &amp; &lt;Life&gt;/);
+    return {ok:true,text:async()=>'<qdbapi><errcode>0</errcode></qdbapi>'};
+  });
+  const response=await handler(event({mode:'create',values:{fundNumber:'3947890',name:'Quantum & <Life>'}}));
+  assert.equal(response.statusCode,502); assert.match(result(response).error,/not confirmed/);
+});
+test('Quickbase timeout returns a visible uncertain-outcome error', async () => {
+  mockQB(url => {
+    if (url.endsWith('/query')) return ok({data:[]});
+    const error=new Error('Timed out'); error.name='TimeoutError'; throw error;
+  });
+  const response=await handler(event({mode:'create',values:{fundNumber:'3947890',name:'Quantum'}}));
+  assert.equal(response.statusCode,504); assert.match(result(response).error,/may have completed/);
+});
+
+test('lookup never writes and needs only the fund number', async () => {
+  mockQB(url => { assert.match(url,/records\/query$/); return ok({data:[]}); });
+  const response=await handler(event({mode:'lookup',values:{fundNumber:'3947890'}}));
+  assert.equal(response.statusCode,200); assert.equal(result(response).found,false);
+});
+test('query failure identifies the stage and safe upstream error', async () => {
+  mockQB(() => ({ok:false,status:400,json:async()=>({message:'Bad Request',description:'Invalid query operator test-token'})}));
+  const response=await handler(event({mode:'lookup',values:{fundNumber:'3947890'}}));
+  assert.match(result(response).error,/Checking existing accounts/);
+  assert.match(result(response).error,/Invalid query operator/);
+  assert.doesNotMatch(result(response).error,/test-token/);
 });

@@ -1,12 +1,12 @@
 <OfficeApp xmlns="http://schemas.microsoft.com/office/appforoffice/1.1" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xmlns:bt="http://schemas.microsoft.com/office/officeappbasictypes/1.0" xsi:type="MailApp">
 <Id>d7464f18-502d-4d69-a64d-cda1a772ba81</Id>
-<Version>1.0.0.0</Version>
+<Version>1.0.1.0</Version>
 <ProviderName>MIT School of Engineering</ProviderName>
 <DefaultLocale>en-US</DefaultLocale>
 <DisplayName DefaultValue="Email to Account"/>
 <Description DefaultValue="Reads a fund notification and pasted gift memo and proposes an Account record in QuickBase for review before it is created."/>
-<IconUrl DefaultValue="https://waivercheck.netlify.app/icons/account-icon-80.png"/>
-<HighResolutionIconUrl DefaultValue="https://waivercheck.netlify.app/icons/account-icon-128.png"/>
+<IconUrl DefaultValue="https://waivercheck.netlify.app/icons/fund-account-80.png"/>
+<HighResolutionIconUrl DefaultValue="https://waivercheck.netlify.app/icons/fund-account-128.png"/>
 <SupportUrl DefaultValue="https://waivercheck.netlify.app/"/>
 <Hosts>
 <Host Name="Mailbox"/>
@@ -65,9 +65,9 @@
 </Hosts>
 <Resources>
 <bt:Images>
-<bt:Image id="icon16" DefaultValue="https://waivercheck.netlify.app/icons/account-icon-16.png"/>
-<bt:Image id="icon32" DefaultValue="https://waivercheck.netlify.app/icons/account-icon-32.png"/>
-<bt:Image id="icon80" DefaultValue="https://waivercheck.netlify.app/icons/account-icon-80.png"/>
+<bt:Image id="icon16" DefaultValue="https://waivercheck.netlify.app/icons/fund-account-16.png"/>
+<bt:Image id="icon32" DefaultValue="https://waivercheck.netlify.app/icons/fund-account-32.png"/>
+<bt:Image id="icon80" DefaultValue="https://waivercheck.netlify.app/icons/fund-account-80.png"/>
 </bt:Images>
 <bt:Urls>
 <bt:Url id="accountUrl" DefaultValue="https://waivercheck.netlify.app/account.html"/>

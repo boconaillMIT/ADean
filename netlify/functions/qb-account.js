@@ -1,16 +1,19 @@
-const { REALM, TABLE, json, qb, schema, clean } = require('./lib/accounts');
+const { REALM, TABLE, json, qb, schema, clean, insertAccount } = require('./lib/accounts');
 
 exports.handler = async event => {
   if (event.httpMethod !== 'POST') return json(405, { error: 'Method Not Allowed' });
   let body;
   try { body = JSON.parse(event.body || '{}'); }
   catch { return json(400, { error: 'Invalid JSON body.' }); }
-  if (!body || !['schema', 'create'].includes(body.mode)) return json(400, { error: 'Use schema or create mode.' });
+  if (!body || !['schema', 'lookup', 'create'].includes(body.mode)) return json(400, { error: 'Use schema, lookup or create mode.' });
   try {
     const fields = await schema();
     if (body.mode === 'schema') return json(200, { fields });
     let values;
-    try { values = clean(body.values, fields); }
+    try {
+      values = clean(body.values, fields, body.mode !== 'lookup');
+      if (!values.fundNumber) throw new Error('Enter a seven-digit MIT fund number.');
+    }
     catch (error) { return json(400, { error: error.message }); }
     // Fail closed: a failed duplicate lookup must never turn into a write.
     const found = await qb('records/query', {
@@ -21,17 +24,14 @@ exports.handler = async event => {
       const recordId = found.data[0]['3'].value;
       return json(200, { duplicate: true, recordId, url: recordUrl(recordId) });
     }
+    if (body.mode === 'lookup') return json(200, { found: false });
     const record = {};
     fields.forEach(field => { if (values[field.key]) record[field.id] = { value: values[field.key] }; });
-    // Cost Object (7) is the table's unique key. Do NOT merge by 7: that would
-    // silently overwrite an existing fund if another user created it meanwhile.
-    const saved = await qb('records', { to: TABLE, mergeFieldId: 3, data: [record], fieldsToReturn: [3] });
-    if (saved.metadata?.lineErrors && Object.keys(saved.metadata.lineErrors).length) {
-      return json(422, { error: 'Quickbase rejected the account. It may already exist or require additional fields. Refresh and check the table before retrying.' });
-    }
-    const recordId = saved.metadata?.createdRecordIds?.[0];
-    if (!recordId) throw new Error('Quickbase did not confirm creation. Check the table before retrying.');
+    const recordId = await insertAccount(record);
     return json(200, { created: true, recordId, url: recordUrl(recordId) });
-  } catch (error) { return json(502, { error: error.message }); }
+  } catch (error) {
+    const timedOut = ['TimeoutError', 'AbortError'].includes(error.name);
+    return json(timedOut ? 504 : 502, { error: timedOut ? 'Quickbase did not respond in time. Check the Accounts table before retrying; creation may have completed.' : error.message });
+  }
 };
 function recordUrl(id) { return 'https://' + REALM + '/db/' + TABLE + '?a=dr&rid=' + encodeURIComponent(id); }

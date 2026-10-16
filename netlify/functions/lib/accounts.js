@@ -22,10 +22,45 @@ async function qb(path, payload) {
   const response = await fetch('https://api.quickbase.com/v1/' + path, {
     method: payload ? 'POST' : 'GET',
     headers: { 'QB-Realm-Hostname': REALM, Authorization: 'QB-USER-TOKEN ' + token, 'Content-Type': 'application/json' },
-    ...(payload ? { body: JSON.stringify(payload) } : {}), signal: AbortSignal.timeout(20000)
+    ...(payload ? { body: JSON.stringify(payload) } : {}), signal: AbortSignal.timeout(10000)
   });
-  if (!response.ok) throw new Error('Quickbase request failed (' + response.status + '). Check the token, permissions, and table fields.');
+  if (!response.ok) {
+    let detail = {};
+    try { detail = await response.json(); } catch { /* no raw response echo */ }
+    const message = [detail.message, detail.description].filter(v => typeof v === 'string').join(' ').split(token).join('[redacted]').slice(0, 400);
+    const stage = path.startsWith('fields?') ? 'Loading account fields' : 'Checking existing accounts';
+    throw new Error(stage + ': Quickbase returned ' + response.status + (message ? ' — ' + message : '. Check token and table permissions.'));
+  }
   return response.json();
+}
+function xmlEscape(value) {
+  return String(value).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&apos;' }[c]));
+}
+function xmlValue(xml, tag) {
+  const value = new RegExp('<' + tag + '>([\\s\\S]*?)</' + tag + '>').exec(xml)?.[1];
+  return value?.replace(/&(?:amp|lt|gt|quot|apos);/g, entity => ({ '&amp;': '&', '&lt;': '<', '&gt;': '>', '&quot;': '"', '&apos;': "'" }[entity]));
+}
+async function insertAccount(record) {
+  const token = process.env.QB_FINANCE_TOKEN;
+  if (!token) throw new Error('QB_FINANCE_TOKEN is not configured.');
+  // API_AddRecord is insert-only even when a table has a custom key.
+  // Its unique Cost Object constraint rejects concurrent duplicate creation.
+  const body = '<qdbapi><usertoken>' + xmlEscape(token) + '</usertoken>' +
+    Object.entries(record).map(([id, field]) => '<field fid="' + id + '">' + xmlEscape(field.value) + '</field>').join('') + '</qdbapi>';
+  const response = await fetch('https://' + REALM + '/db/' + TABLE, {
+    method: 'POST', headers: { 'Content-Type': 'application/xml', 'QUICKBASE-ACTION': 'API_AddRecord' },
+    body, signal: AbortSignal.timeout(10000)
+  });
+  const xml = await response.text();
+  const code = xmlValue(xml, 'errcode');
+  if (!response.ok || code !== '0') {
+    // Return only documented error text; never echo the request or credentials.
+    const detail = (xmlValue(xml, 'errtext') || 'Request failed').split(token).join('[redacted]').slice(0, 300);
+    throw new Error('Quickbase could not create the account (' + (code || response.status) + '): ' + detail);
+  }
+  const id = Number(xmlValue(xml, 'rid'));
+  if (!Number.isSafeInteger(id) || id <= 0) throw new Error('Creation was not confirmed. Check Quickbase before retrying.');
+  return id;
 }
 async function schema() {
   const live = await qb('fields?tableId=' + TABLE);
@@ -63,4 +98,4 @@ function parseNotice(text) {
   if (!matches.length) flags.push('No standard fund notice was found. Verify the fund number and name.');
   return { values, flags };
 }
-module.exports = { REALM, TABLE, FIELDS, json, qb, schema, clean, parseNotice };
+module.exports = { REALM, TABLE, FIELDS, json, qb, schema, clean, parseNotice, insertAccount };

@@ -3,14 +3,21 @@ const $ = id => document.getElementById(id);
 let fields = [], busy = false, saved = false;
 const setStatus = message => { $('status').textContent = message; };
 async function post(name, payload) {
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), name === 'qb-account' ? 45000 : 65000);
+  try {
   const response = await fetch('/.netlify/functions/' + name, {
-    method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload)
+    method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload), signal: controller.signal
   });
   let data;
   try { data = await response.json(); }
   catch { throw new Error('The service is unavailable. Check that the Netlify functions are deployed.'); }
   if (!response.ok) throw new Error(data.error || 'Request failed.');
   return data;
+  } catch (error) {
+    if (error.name === 'AbortError') throw new Error('The request timed out. Check Quickbase before retrying account creation.');
+    throw error;
+  } finally { clearTimeout(timer); }
 }
 function lock(value) {
   busy = value;
@@ -73,11 +80,25 @@ function render(values, flags) {
   }
   $('review').hidden = false;
 }
+$('lookup').addEventListener('click', async () => {
+  if (busy) return;
+  lock(true); $('result').textContent = 'Checking Quickbase…';
+  try {
+    const data = await post('qb-account', { mode: 'lookup', values: { fundNumber: $('field_fundNumber').value } });
+    $('result').textContent = data.duplicate ? 'This account already exists. ' : 'No account with this fund number was found. You can review the proposal and create it.';
+    if (data.duplicate) {
+      const link = document.createElement('a'); link.href = data.url; link.textContent = 'Open existing account'; link.target = '_blank'; link.rel = 'noopener noreferrer'; $('result').append(link);
+    }
+  } catch (error) { $('result').textContent = error.message; }
+  finally { lock(false); $('result').scrollIntoView({ block: 'nearest' }); }
+});
 $('accountForm').addEventListener('submit', async event => {
   event.preventDefault();
   if (busy || saved || !$('reviewed').checked || !$('accountForm').reportValidity()) return;
   const values = Object.fromEntries(fields.map(f => [f.key, $('field_' + f.key).value]));
   lock(true); $('result').replaceChildren(); setStatus('Checking the fund number and creating the account…');
+  $('create').textContent = 'Creating account…';
+  $('result').textContent = 'Checking for an existing fund and saving to Quickbase…';
   try {
     const data = await post('qb-account', { mode: 'create', values });
     if (!data.created && !data.duplicate) throw new Error('Creation was not confirmed. Check Quickbase before retrying.');
@@ -88,9 +109,16 @@ $('accountForm').addEventListener('submit', async event => {
     // The service produces this URL, but only a verified Quickbase link is opened.
     const url = new URL(data.url);
     if (url.origin !== 'https://mit.quickbase.com') throw new Error('Unexpected record URL. Open the Accounts table to verify the result.');
-    link.href = url.href; $('result').append(message, link); setStatus(data.duplicate ? 'Existing account found. No new account was created.' : 'Account created.');
-  } catch (error) { setStatus(error.message + ' If the request was interrupted, check Quickbase before retrying.'); }
-  finally { invalidate(); lock(false); }
+    link.href = url.href; $('result').replaceChildren(message, link); setStatus(data.duplicate ? 'Existing account found. No new account was created.' : 'Account created.');
+  } catch (error) {
+    const message = error.message + ' Check the Accounts table before retrying.';
+    setStatus(message); $('result').replaceChildren();
+    const paragraph = document.createElement('p'); paragraph.textContent = message;
+    const link = document.createElement('a'); link.href = 'https://mit.quickbase.com/nav/app/br2xvzd7a/table/br2xvsvpw/action/td';
+    link.textContent = 'Check Accounts in Quickbase'; link.target = '_blank'; link.rel = 'noopener noreferrer';
+    $('result').append(paragraph, link);
+  }
+  finally { $('create').textContent = 'Create account in Quickbase'; invalidate(); lock(false); $('result').scrollIntoView({ block: 'nearest' }); }
 });
 if (window.Office) Office.onReady(info => {
   if (info.host === Office.HostType.Outlook) { lock(false); readEmail(); }

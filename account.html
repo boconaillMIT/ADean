@@ -5,13 +5,13 @@
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>Email to Account</title>
   <script src="https://appsforoffice.microsoft.com/lib/1/hosted/office.js"></script>
-  <link rel="stylesheet" href="account.css">
-  <script src="account.js" defer></script>
+  <link rel="stylesheet" href="account.css?v=20261016b">
+  <script src="account.js?v=20261016b" defer></script>
 </head>
 <body>
   <main>
     <p class="eyebrow">SOE FINANCE · OUTLOOK</p>
-    <h1>Email to Account</h1>
+    <h1><img src="icons/fund-account-32.png" width="28" height="28" alt="" style="vertical-align:middle;margin-right:8px">Email to Account</h1>
     <p class="intro">Turn a fund notice and its gift documentation into a Quickbase account.</p>
     <section aria-labelledby="sourceTitle">
       <h2 id="sourceTitle">1. Read the source</h2>
@@ -36,6 +36,7 @@
       <p class="hint">Check every proposed value against the source. Missing details stay blank.</p>
       <form id="accountForm">
         <div id="fields"></div>
+        <button id="lookup" type="button">Check for existing account</button>
         <label class="check"><input type="checkbox" id="reviewed" required> I have reviewed these values against the email and gift documentation.</label>
         <button id="create" type="submit" disabled>Create account in Quickbase</button>
       </form>
