@@ -1,0 +1,47 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Email to Account</title>
+  <script src="https://appsforoffice.microsoft.com/lib/1/hosted/office.js"></script>
+  <link rel="stylesheet" href="account.css">
+  <script src="account.js" defer></script>
+</head>
+<body>
+  <main>
+    <p class="eyebrow">SOE FINANCE · OUTLOOK</p>
+    <h1>Email to Account</h1>
+    <p class="intro">Turn a fund notice and its gift documentation into a Quickbase account.</p>
+    <section aria-labelledby="sourceTitle">
+      <h2 id="sourceTitle">1. Read the source</h2>
+      <button id="readEmail" type="button" disabled>Read open email</button>
+      <p id="emailSummary" class="hint">Open the fund notification in Outlook, or paste its text below.</p>
+      <details id="emailDetails">
+        <summary>Email text</summary>
+        <label for="subject">Subject</label><input id="subject" maxlength="2000">
+        <label for="emailBody">Email contents</label>
+        <textarea id="emailBody" rows="5" maxlength="60000" placeholder="Paste a fund notice here to use this outside Outlook."></textarea>
+      </details>
+      <label for="pdfText">Paste PDF contents <span class="optional">optional</span></label>
+      <p class="hint" id="pdfHint">Copy the text from the attached gift memo and paste it here. Automatic PDF reading will come later.</p>
+      <textarea id="pdfText" rows="7" maxlength="100000" aria-describedby="pdfHint" placeholder="Paste the purpose, restrictions, stewardship terms, and other fund details…"></textarea>
+      <p class="hint">PDF text is interpreted through MIT Parley when configured.</p>
+      <button id="extract" type="button">Propose account</button>
+    </section>
+    <p id="status" role="status" aria-live="polite">Ready to read an email or pasted text.</p>
+    <ul id="flags" aria-label="Items to review"></ul>
+    <section id="review" hidden aria-labelledby="reviewTitle">
+      <h2 id="reviewTitle">2. Review the account</h2>
+      <p class="hint">Check every proposed value against the source. Missing details stay blank.</p>
+      <form id="accountForm">
+        <div id="fields"></div>
+        <label class="check"><input type="checkbox" id="reviewed" required> I have reviewed these values against the email and gift documentation.</label>
+        <button id="create" type="submit" disabled>Create account in Quickbase</button>
+      </form>
+      <p class="hint">An existing Cost Object opens for review. Creation does not update an existing account.</p>
+    </section>
+    <div id="result" role="status" aria-live="polite"></div>
+  </main>
+</body>
+</html>
