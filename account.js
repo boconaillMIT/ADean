@@ -1,6 +1,7 @@
 'use strict';
 const $ = id => document.getElementById(id);
 let fields = [], busy = false, saved = false;
+let sourceItemId = null;
 const setStatus = message => { $('status').textContent = message; };
 async function post(name, payload) {
   const controller = new AbortController();
@@ -41,6 +42,8 @@ async function readEmail() {
       else reject(new Error(result.error?.message || 'Could not read the email.'));
     }));
     $('subject').value = item.subject || ''; $('emailBody').value = text;
+    sourceItemId = item.itemId;
+    $('emailFile').value = '';
     $('emailSummary').textContent = item.subject || 'Email loaded.';
     setStatus('Email loaded. Paste the gift memo text if available, then propose the account.');
   } catch (error) { setStatus(error.message); }
@@ -92,26 +95,40 @@ $('lookup').addEventListener('click', async () => {
   } catch (error) { $('result').textContent = error.message; }
   finally { lock(false); $('result').scrollIntoView({ block: 'nearest' }); }
 });
+$('storeEmail').addEventListener('change', invalidate);
+$('emailFile').addEventListener('change', invalidate);
 $('accountForm').addEventListener('submit', async event => {
   event.preventDefault();
   if (busy || saved || !$('reviewed').checked || !$('accountForm').reportValidity()) return;
   const values = Object.fromEntries(fields.map(f => [f.key, $('field_' + f.key).value]));
+  const wantEmail = $('storeEmail').checked;
+  const uploadedEmail = $('emailFile').files[0];
   lock(true); $('result').replaceChildren(); setStatus('Checking the fund number and creating the account…');
   $('create').textContent = 'Creating account…';
   $('result').textContent = 'Checking for an existing fund and saving to Quickbase…';
+  let createRequested = false;
   try {
-    const data = await post('qb-account', { mode: 'create', values });
+    let attachment;
+    if (wantEmail) {
+      $('result').textContent = 'Preparing the source email…';
+      attachment = uploadedEmail ? await AccountEmail.readUpload(uploadedEmail) :
+        await AccountEmail.exportMessage(window.Office?.context?.mailbox?.item, window.Office?.context?.requirements, sourceItemId);
+    }
+    $('result').textContent = 'Checking for an existing fund and saving to Quickbase…';
+    createRequested = true;
+    const data = await post('qb-account', { mode: 'create', values, attachment });
     if (!data.created && !data.duplicate) throw new Error('Creation was not confirmed. Check Quickbase before retrying.');
     saved = true;
     const message = document.createElement('p');
-    message.textContent = data.duplicate ? 'This fund already exists. Review its account and update the documentation there if needed.' : 'Account #' + data.recordId + ' created in Quickbase.';
+    message.textContent = data.duplicate ? 'This fund already exists. Review its account and update the documentation there if needed. No attachment was changed.' :
+      'Account #' + data.recordId + ' created in Quickbase' + (data.emailAttached ? ' with the source email in Attachment.' : '.');
     const link = document.createElement('a'); link.textContent = 'Open account in Quickbase'; link.target = '_blank'; link.rel = 'noopener noreferrer';
     // The service produces this URL, but only a verified Quickbase link is opened.
     const url = new URL(data.url);
     if (url.origin !== 'https://mit.quickbase.com') throw new Error('Unexpected record URL. Open the Accounts table to verify the result.');
     link.href = url.href; $('result').replaceChildren(message, link); setStatus(data.duplicate ? 'Existing account found. No new account was created.' : 'Account created.');
   } catch (error) {
-    const message = error.message + ' Check the Accounts table before retrying.';
+    const message = error.message + (createRequested ? ' Check the Accounts table before retrying.' : ' No account was created.');
     setStatus(message); $('result').replaceChildren();
     const paragraph = document.createElement('p'); paragraph.textContent = message;
     const link = document.createElement('a'); link.href = 'https://mit.quickbase.com/nav/app/br2xvzd7a/table/br2xvsvpw/action/td';

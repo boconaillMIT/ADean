@@ -6,7 +6,8 @@
   <title>Email to Account</title>
   <script src="https://appsforoffice.microsoft.com/lib/1/hosted/office.js"></script>
   <link rel="stylesheet" href="account.css?v=20261016b">
-  <script src="account.js?v=20261016b" defer></script>
+  <script src="email-source.js?v=20261016c" defer></script>
+  <script src="account.js?v=20261016c" defer></script>
 </head>
 <body>
   <main>
@@ -37,6 +38,12 @@
       <form id="accountForm">
         <div id="fields"></div>
         <button id="lookup" type="button">Check for existing account</button>
+        <label class="check"><input type="checkbox" id="storeEmail" checked> Store source email (.eml) in Attachment</label>
+        <details><summary>Upload a saved email instead</summary>
+          <label for="emailFile">Source email (.eml, up to 3 MB)</label>
+          <input id="emailFile" type="file" accept=".eml,message/rfc822">
+        </details>
+        <p class="hint">The original message is saved with the new account. If export fails, creation stops so you can choose how to proceed.</p>
         <label class="check"><input type="checkbox" id="reviewed" required> I have reviewed these values against the email and gift documentation.</label>
         <button id="create" type="submit" disabled>Create account in Quickbase</button>
       </form>

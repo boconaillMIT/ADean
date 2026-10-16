@@ -40,13 +40,23 @@ function xmlValue(xml, tag) {
   const value = new RegExp('<' + tag + '>([\\s\\S]*?)</' + tag + '>').exec(xml)?.[1];
   return value?.replace(/&(?:amp|lt|gt|quot|apos);/g, entity => ({ '&amp;': '&', '&lt;': '<', '&gt;': '>', '&quot;': '"', '&apos;': "'" }[entity]));
 }
-async function insertAccount(record) {
+function validateEmailAttachment(attachment) {
+  if (attachment == null) return null;
+  if (typeof attachment !== 'object' || typeof attachment.fileName !== 'string' || !/\.eml$/i.test(attachment.fileName)) throw new Error('Source email must be an .eml file.');
+  const data = attachment.data;
+  if (typeof data !== 'string' || !data.length || data.length > 4000000 || data.length % 4 || !/^[A-Za-z0-9+/]+={0,2}$/.test(data)) throw new Error('Source email must be valid Base64 and no larger than 3 MB.');
+  const decoded = Buffer.from(data, 'base64');
+  if (decoded.toString('base64') !== data || !decoded.length || decoded.length > 3000000) throw new Error('Invalid source email file.');
+  return { fileName: attachment.fileName.replace(/[\\/:*?"<>|\x00-\x1f]/g, '_').slice(-150), data };
+}
+async function insertAccount(record, attachment = null) {
   const token = process.env.QB_FINANCE_TOKEN;
   if (!token) throw new Error('QB_FINANCE_TOKEN is not configured.');
   // API_AddRecord is insert-only even when a table has a custom key.
   // Its unique Cost Object constraint rejects concurrent duplicate creation.
   const body = '<qdbapi><usertoken>' + xmlEscape(token) + '</usertoken>' +
-    Object.entries(record).map(([id, field]) => '<field fid="' + id + '">' + xmlEscape(field.value) + '</field>').join('') + '</qdbapi>';
+    Object.entries(record).map(([id, field]) => '<field fid="' + id + '">' + xmlEscape(field.value) + '</field>').join('') +
+    (attachment ? '<field fid="27" filename="' + xmlEscape(attachment.fileName) + '">' + attachment.data + '</field>' : '') + '</qdbapi>';
   const response = await fetch('https://' + REALM + '/db/' + TABLE, {
     method: 'POST', headers: { 'Content-Type': 'application/xml', 'QUICKBASE-ACTION': 'API_AddRecord' },
     body, signal: AbortSignal.timeout(10000)
@@ -98,4 +108,4 @@ function parseNotice(text) {
   if (!matches.length) flags.push('No standard fund notice was found. Verify the fund number and name.');
   return { values, flags };
 }
-module.exports = { REALM, TABLE, FIELDS, json, qb, schema, clean, parseNotice, insertAccount };
+module.exports = { REALM, TABLE, FIELDS, json, qb, schema, clean, parseNotice, insertAccount, validateEmailAttachment };

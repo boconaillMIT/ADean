@@ -129,3 +129,27 @@ test('query failure identifies the stage and safe upstream error', async () => {
   assert.match(result(response).error,/Invalid query operator/);
   assert.doesNotMatch(result(response).error,/test-token/);
 });
+
+test('email is saved to Attachment 27 in the same insert request', async () => {
+  const attachment={fileName:'Source & notice.eml',data:Buffer.from('Subject: Fund notice\r\n\r\nMessage body').toString('base64')};
+  mockQB((url,payload)=>{
+    if(url.endsWith('/query')) return ok({data:[]});
+    assert(payload.includes('<field fid="27" filename="Source &amp; notice.eml">'+attachment.data+'</field>'));
+    assert.doesNotMatch(payload, /fid="43"/);
+    return {ok:true,text:async()=>'<qdbapi><errcode>0</errcode><rid>102</rid></qdbapi>'};
+  });
+  const response=await handler(event({mode:'create',values:{fundNumber:'3947890',name:'Quantum'},attachment}));
+  assert.equal(response.statusCode,200); assert.equal(result(response).emailAttached,true);
+});
+test('invalid email files are rejected before any record operation', async () => {
+  mockQB(()=>{throw new Error('No record operation expected');});
+  for(const attachment of [{fileName:'memo.pdf',data:'YQ=='},{fileName:'mail.eml',data:'@@=='},{fileName:'mail.eml',data:'YQ='},{fileName:'mail.eml',data:'A'.repeat(4000004)}]) {
+    const response=await handler(event({mode:'create',values:{fundNumber:'3947890',name:'Quantum'},attachment}));
+    assert.equal(response.statusCode,400);
+  }
+});
+test('duplicate with an email never inserts or replaces an attachment', async () => {
+  mockQB(url=>{assert.match(url,/records\/query$/); return ok({data:[{3:{value:99}}]});});
+  const response=await handler(event({mode:'create',values:{fundNumber:'3947890',name:'Quantum'},attachment:{fileName:'mail.eml',data:'YQ=='}}));
+  assert.equal(result(response).duplicate,true); assert.equal(result(response).emailAttached,undefined);
+});

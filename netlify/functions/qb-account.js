@@ -1,4 +1,4 @@
-const { REALM, TABLE, json, qb, schema, clean, insertAccount } = require('./lib/accounts');
+const { REALM, TABLE, json, qb, schema, clean, insertAccount, validateEmailAttachment } = require('./lib/accounts');
 
 exports.handler = async event => {
   if (event.httpMethod !== 'POST') return json(405, { error: 'Method Not Allowed' });
@@ -9,10 +9,11 @@ exports.handler = async event => {
   try {
     const fields = await schema();
     if (body.mode === 'schema') return json(200, { fields });
-    let values;
+    let values, attachment;
     try {
       values = clean(body.values, fields, body.mode !== 'lookup');
       if (!values.fundNumber) throw new Error('Enter a seven-digit MIT fund number.');
+      if (body.mode === 'create') attachment = validateEmailAttachment(body.attachment);
     }
     catch (error) { return json(400, { error: error.message }); }
     // Fail closed: a failed duplicate lookup must never turn into a write.
@@ -27,8 +28,8 @@ exports.handler = async event => {
     if (body.mode === 'lookup') return json(200, { found: false });
     const record = {};
     fields.forEach(field => { if (values[field.key]) record[field.id] = { value: values[field.key] }; });
-    const recordId = await insertAccount(record);
-    return json(200, { created: true, recordId, url: recordUrl(recordId) });
+    const recordId = await insertAccount(record, attachment);
+    return json(200, { created: true, recordId, emailAttached: !!attachment, url: recordUrl(recordId) });
   } catch (error) {
     const timedOut = ['TimeoutError', 'AbortError'].includes(error.name);
     return json(timedOut ? 504 : 502, { error: timedOut ? 'Quickbase did not respond in time. Check the Accounts table before retrying; creation may have completed.' : error.message });

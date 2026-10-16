@@ -21,7 +21,7 @@ Verified through the signed-in table settings on October 16, 2026:
 | Stewardship | 41 | Choice |
 | Stewardship Note | 42 | Multiline |
 
-Choice lists are loaded from Quickbase on each proposal and validated again before creation. Balances, amounts, review-status checkboxes, and attachment fields are excluded. No PDF attachment is read or uploaded in this version. Pasted PDF text is used for extraction, not automatically stored as the original gift memo.
+Choice lists are loaded from Quickbase on each proposal and validated again before creation. Balances, amounts, and review-status checkboxes are excluded. Attachment field 27 stores the source email as an .eml file when selected. No PDF attachment is interpreted in this version. Exported .eml messages can include their original attachments. Pasted PDF text is used for extraction, not automatically stored as the original gift memo.
 
 ## Run and test
 
@@ -36,7 +36,7 @@ Open `http://127.0.0.1:8787`. Outside Outlook, expand **Email text** and paste t
 
 ## Deploy alongside the existing add-ins
 
-1. Copy `account.html`, `account.css`, `account.js`, `account_manifest.xml`, `icons/fund-account-*.png`, `netlify/functions/qb-account.js`, `netlify/functions/parley-account-extract.js`, and `netlify/functions/lib/accounts.js` into the existing ADean site's corresponding folders. Preserve its existing files and configuration. Alternatively deploy this project as a separate Netlify site.
+1. Copy `account.html`, `account.css`, `account.js`, `email-source.js`, `account_manifest.xml`, `icons/fund-account-*.png`, `netlify/functions/qb-account.js`, `netlify/functions/parley-account-extract.js`, and `netlify/functions/lib/accounts.js` into the existing ADean site's corresponding folders. Preserve its existing files and configuration. Alternatively deploy this project as a separate Netlify site.
 2. Set **QB_FINANCE_TOKEN** in the server-side Netlify environment to a Quickbase user token with read-field, query, and create permissions for Accounts. Never put tokens in browser code.
 3. Set **PARLEY_FINANCE_API_KEY** to the shared finance MIT Parley key. It does not fall back to other Parley keys. Email-only standard notices work without Parley; missing or failed PDF interpretation is clearly flagged for manual entry.
 4. The included manifest targets the existing `https://waivercheck.netlify.app` host. If deploying elsewhere, replace that origin in every manifest URL. It has its own add-in ID and uses `ReadItem` permission. Increment the manifest version when changing it.
@@ -62,3 +62,7 @@ For mailbox installation, open https://aka.ms/olksideload, select **My add-ins â
 ## Save and icon update â€” version 1.0.1.0
 
 Creation uses Quickbase API_AddRecord (insert-only), after a duplicate lookup. Each Quickbase request has a ten-second timeout. Save progress and errors appear beside the Create button, and the read-only Check for existing account action can confirm the fund before retrying. The custom ledger/checkmark icons have new filenames to avoid cached dollar-sign icons. Reinstall the updated manifest to refresh Outlook ribbon icons; the hosted save fix takes effect when the pane reloads.
+
+## Source email storage
+
+Store source email is selected by default. In Outlook supporting Mailbox 1.14, the original .eml is exported using getAsFileAsync and saved in Accounts Attachment (field 27) in the same insert-only API_AddRecord request. If export is unavailable or fails, creation stops; upload a saved .eml (up to 3 MB), retry export, or explicitly uncheck email storage. No partial account is silently created without the requested email. Existing records and their attachments are never updated by this flow. Outside Outlook, use the upload option.
