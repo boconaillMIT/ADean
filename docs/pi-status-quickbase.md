@@ -32,3 +32,9 @@ Run `node --test tests/qb-pi-status.test.js`. Tests mock QuickBase and cover fie
 Browser validation used Chromium with mocked Office and API responses, including all three requester types, required decision/Kerberos, save-only behavior, failure links, duplicates and retained email actions. No real records were created. Live QuickBase validation remains blocked by the research token/settings save issue.
 
 Deploy the updated page, Netlify function and manifest together. The manifest retains the add-in ID, is version 1.0.1.0, and labels the app and Outlook button **Research Pre-Check**. Update the installed/sideloaded manifest to refresh the Outlook name.
+
+## Confirm unfamiliar departments
+
+Before a PI-status request is written, the server reads Department field 29 from Quickbase. An existing choice is reused with its canonical spelling (case and spacing differences do not create a new choice). An unfamiliar nonblank value returns a confirmation response without writing a record. The pane asks whether to use that exact new department and reminds the reviewer to check for typos and labs within departments. Choosing No opens a correction box with existing choices suggested. A corrected value that is still new requires a fresh confirmation. Confirmation is tied to the exact department shown; changing it cannot reuse earlier consent. If the choices cannot be verified, no record is written. Blank optional departments remain allowed. This does not rename or clean up existing Quickbase choices.
+
+Validation: `node --test tests/qb-pi-status.test.js tests/pi-department-ui.test.js` covers the confirmation barrier, exact consent, canonical existing choices, the correction path, failed lookups, and the existing PI-status write safeguards. Tests use synthetic data and mocked services; they do not create live records.

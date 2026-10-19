@@ -56,7 +56,7 @@
   </style>
 </head>
 <body>
-  <h1>Research Pre-Check <span style="color:var(--muted);font-size:11px;font-weight:normal;">v2026-10-15c</span></h1>
+  <h1>Research Pre-Check <span style="color:var(--muted);font-size:11px;font-weight:normal;">v2026-10-19a</span></h1>
   <details id="pasteBox">
     <summary>Paste PDF / extra text (optional)</summary>
     <textarea id="pastedText" rows="6" placeholder="Paste the PDF text or any extra request content here. It will be included in the check."></textarea>
@@ -442,7 +442,8 @@
         input("piTitle", "Proposal title", f.proposal_title || "", "text", false) +
         input("piNumber", "Proposal number", "", "text", false) +
         input("piSponsor", "Sponsor (QuickBase choice)", f.sponsor || "", "text", false) +
-        input("piDepartment", "Department (QuickBase choice)", f.dlc || "", "text", false) +
+        input("piDepartment", "Department (QuickBase choice)", f.dlc || "", "text", false, " list='piDepartmentChoices'") +
+        "<datalist id='piDepartmentChoices'></datalist><p class='reminder'>A department not already in QuickBase needs your confirmation before saving. Check whether a named lab belongs under an existing department.</p>" +
         input("piStart", "Proposal start date", f.proposal_start_date || "", "date", false) +
         input("piEnd", "Proposal end date", "", "date", false) +
         input("piRequested", "Date of request", source.date || today, "date", true) +
@@ -467,7 +468,45 @@
       document.getElementById("piDecisionDate").required = decided;
     }
 
-    async function savePiStatus(event) {
+    function confirmPiDepartment(data) {
+      var out = document.getElementById("piSaveResult");
+      var proposed = data.department;
+      var choices = Array.isArray(data.choices) ? data.choices : [];
+      var list = document.getElementById("piDepartmentChoices");
+      list.replaceChildren();
+      choices.forEach(function (choice) { var option = document.createElement("option"); option.value = choice; list.appendChild(option); });
+      out.replaceChildren();
+      var question = document.createElement("p");
+      question.textContent = 'The department "' + proposed + '" is not in the current QuickBase list. Use it as a new department? Check spelling and whether this is a lab within an existing department.';
+      out.appendChild(question);
+      var yes = document.createElement("button"), no = document.createElement("button");
+      yes.type = no.type = "button";
+      yes.textContent = "Yes, use this new department";
+      no.textContent = "No, enter the correct department"; no.className = "secondary";
+      yes.addEventListener("click", function () {
+        // Recollect all values and confirm only the exact department displayed.
+        return savePiStatus({ preventDefault: function () {} }, proposed);
+      });
+      no.addEventListener("click", function () {
+        out.replaceChildren();
+        var label = document.createElement("label"), input = document.createElement("input"), save = document.createElement("button");
+        label.htmlFor = "piDepartmentCorrection"; label.textContent = "Correct department";
+        input.id = "piDepartmentCorrection"; input.className = "cc"; input.setAttribute("list", "piDepartmentChoices");
+        input.placeholder = "Enter or select the parent department";
+        save.type = "button"; save.textContent = "Save with corrected department";
+        save.addEventListener("click", function () {
+          if (!input.value.trim()) { input.focus(); return; }
+          document.getElementById("piDepartment").value = input.value.trim();
+          // A different new value must go through confirmation again.
+          return savePiStatus({ preventDefault: function () {} });
+        });
+        input.addEventListener("keydown", function (event) { if (event.key === "Enter") { event.preventDefault(); save.click(); } });
+        out.appendChild(label); out.appendChild(input); out.appendChild(save); input.focus();
+      });
+      out.appendChild(yes); out.appendChild(no); out.scrollIntoView({ block: "nearest" });
+    }
+
+    async function savePiStatus(event, confirmedDepartment) {
       event.preventDefault();
       var btn = document.getElementById("piSaveBtn"), out = document.getElementById("piSaveResult");
       if (btn.disabled) return;
@@ -488,11 +527,15 @@
         totalProposalValue: value("piTotal") === "" ? null : Number(value("piTotal")),
         endorsement: value("piEndorsement"), reason: value("piReason"), notes: value("piNotes"),
         decision: value("piDecision"), decisionDate: value("piDecisionDate") };
+      if (typeof confirmedDepartment === "string" && payload.department === confirmedDepartment) payload.confirmedDepartment = confirmedDepartment;
       btn.disabled = true;
       out.textContent = "Saving PI-status request to QuickBase...";
       try {
         var response = await fetch(QB_PI_SAVE_URL, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(payload) });
         var data = await response.json();
+        if (response.status === 409 && data.departmentConfirmationRequired) {
+          confirmPiDepartment(data); return;
+        }
         out.textContent = response.ok ? data.message : (data.error || "QuickBase save failed.");
         if (Number.isSafeInteger(data.recordId) && data.recordId > 0) {
           var link = document.createElement("a");

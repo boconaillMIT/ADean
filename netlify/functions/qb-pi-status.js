@@ -64,6 +64,24 @@ exports.handler = async event => {
       return reply(200, { duplicate: true, recordId: id, url: recordUrl(id),
         message: 'A PI-status record for this researcher and source email already exists. Review it before adding another.' });
     }
+    // Quickbase permits new choices on this field. Never let AI text add one
+    // without the reviewer confirming that exact value on this save attempt.
+    let department = text(v.department);
+    if (department) {
+      const response = await fetch(API + '/fields/' + F.department + '?tableId=' + TABLE, { headers });
+      const field = await response.json();
+      if (!response.ok || !Array.isArray(field.properties?.choices) || field.properties.choices.some(c => typeof c !== 'string')) {
+        throw new Error('Could not verify the existing QuickBase departments. Nothing was saved; try again.');
+      }
+      const choices = field.properties.choices;
+      const normalize = value => value.trim().replace(/\s+/g, ' ').toLowerCase();
+      const match = choices.find(choice => normalize(choice) === normalize(department));
+      if (match !== undefined) department = match;
+      else if (v.confirmedDepartment !== department) {
+        return reply(409, { departmentConfirmationRequired: true, department, choices,
+          message: 'This department is not in the current QuickBase list. Confirm the new department or enter the correct existing department. Nothing has been saved.' });
+      }
+    }
     const rec = {};
     const put = (id, value) => { if (value !== '' && value !== null && value !== undefined) rec[id] = { value }; };
     put(F.kerberos, text(v.kerberos).toLowerCase());
@@ -71,7 +89,7 @@ exports.handler = async event => {
     put(F.mentor, text(v.mentor)); put(F.researcher, text(v.researcher));
     put(F.request, true); put(F.requested, v.dateOfRequest);
     put(F.title, text(v.proposalTitle)); put(F.proposal, text(v.proposalNumber));
-    put(F.sponsor, text(v.sponsor)); put(F.department, text(v.department));
+    put(F.sponsor, text(v.sponsor)); put(F.department, department);
     put(F.start, v.proposalStart); put(F.end, v.proposalEnd);
     put(F.emailSubject, text(v.emailSubject)); put(F.emailDate, v.emailDate);
     put(F.emailBody, typeof v.emailBody === 'string' ? v.emailBody : '');

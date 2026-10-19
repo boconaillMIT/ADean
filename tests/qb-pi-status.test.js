@@ -13,7 +13,7 @@ function harness(responses = [], token = 'mock-token') {
   const calls = [];
   const context = { exports: {}, process: { env: token ? { QB_RESEARCH_TOKEN: token } : {} },
     fetch: async (url, init) => {
-      calls.push({ url, headers: init.headers, body: JSON.parse(init.body) });
+      calls.push({ url, headers: init.headers, body: init.body ? JSON.parse(init.body) : undefined });
       assert(responses.length, 'Unexpected upstream call');
       const r = responses.shift();
       if (r instanceof Error) throw r;
@@ -25,18 +25,19 @@ function harness(responses = [], token = 'mock-token') {
     return { status: result.statusCode, ...JSON.parse(result.body) };
   }, handler: context.exports.handler };
 }
+const departments = () => ({ body: { properties: { choices: ['Example department', 'Mechanical Engineering'] } } });
 const empty = () => ({ body: { data: [] } });
 const created = () => ({ body: { data: [{ 3: { value: 101 } }] } });
 const verified = () => ({ body: { data: [{ 3: { value: 101 }, 56: { value: 'example' } }] } });
 
 test('saves the PI-status table, maps screenshot fields, verifies before success', async () => {
-  const h = harness([empty(), created(), verified()]);
+  const h = harness([empty(), departments(), created(), verified()]);
   const result = await h.post();
   assert.equal(result.status, 200); assert.equal(result.verified, true); assert.equal(result.recordId, 101);
-  assert.equal(h.calls.length, 3);
+  assert.equal(h.calls.length, 4);
   assert.equal(h.calls[0].body.from, 'bsskfjj57');
   assert(h.calls[0].body.where.includes("O\\'Brien"));
-  const write = h.calls[1];
+  const write = h.calls[2];
   assert.equal(write.body.to, 'bsskfjj57');
   assert.equal(write.headers.Authorization, 'QB-USER-TOKEN mock-token');
   const record = write.body.data[0];
@@ -44,19 +45,19 @@ test('saves the PI-status table, maps screenshot fields, verifies before success
     [10,150000],[41,'Test proposal'],[23,'123'],[28,'Example sponsor'],[29,'Example department'],[42,'Test reason'],
     [15,'Synthetic email only'],[16,'2026-10-14'],[56,'example']]) assert.equal(record[id].value,value,'field '+id);
   assert.equal(record[51], undefined); assert.equal(record[52], undefined);
-  assert.equal(h.calls[2].body.where, '{3.EX.101}');
+  assert.equal(h.calls[3].body.where, '{3.EX.101}');
 });
 test('pending never writes approval or a decision date, even with supplied dates', async () => {
-  const h = harness([empty(),created(),verified()]);
+  const h = harness([empty(),departments(),created(),verified()]);
   assert.equal((await h.post(request({ decision:'pending' }))).status,200);
-  const record=h.calls[1].body.data[0];
+  const record=h.calls[2].body.data[0];
   assert.equal(record[37],undefined); assert.equal(record[8],undefined);
   assert.match(record[14].value,/decision: pending/);
 });
 test('manual not-approved decision writes false, not an approval', async () => {
-  const h = harness([empty(),created(),verified()]);
+  const h = harness([empty(),departments(),created(),verified()]);
   await h.post(request({decision:'denied'}));
-  assert.equal(h.calls[1].body.data[0][37].value,false);
+  assert.equal(h.calls[2].body.data[0][37].value,false);
 });
 test('an existing request is returned without a write', async () => {
   const h=harness([{body:{data:[{3:{value:55}}]}}]);
@@ -71,11 +72,11 @@ test('a failed or malformed duplicate check prevents creation', async () => {
 });
 test('record errors and unsuccessful verification never report success', async () => {
   for(const responses of [
-    [empty(),{body:{metadata:{lineErrors:{1:['Required field missing']}}}}],
-    [empty(),{body:{data:[]}}],
-    [empty(),created(),empty()],
-    [empty(),created(),{ok:false,body:{}}],
-    [empty(),created(),{body:{data:[{3:{value:101},56:{value:'different'}}]}}]
+    [empty(),departments(),{body:{metadata:{lineErrors:{1:['Required field missing']}}}}],
+    [empty(),departments(),{body:{data:[]}}],
+    [empty(),departments(),created(),empty()],
+    [empty(),departments(),created(),{ok:false,body:{}}],
+    [empty(),departments(),created(),{body:{data:[{3:{value:101},56:{value:'different'}}]}}]
   ]) {
     const h=harness(responses); const r=await h.post();
     assert.equal(r.status,502); assert.equal(r.created,undefined); assert.match(r.error,/before retrying/);
@@ -95,4 +96,44 @@ test('missing credentials and unsupported methods make no upstream request', asy
   assert.equal((await h.handler({httpMethod:'OPTIONS'})).statusCode,204);
   assert.equal((await h.handler({httpMethod:'POST',body:'{'})).statusCode,400);
   assert.equal((await h.post(null)).status,400); assert.equal(h.calls.length,0);
+});
+
+test('new department pauses before writing and returns existing choices', async () => {
+  const h=harness([empty(),departments()]);
+  const r=await h.post(request({department:'Robotics Labb'}));
+  assert.equal(r.status,409); assert.equal(r.departmentConfirmationRequired,true);
+  assert.equal(r.department,'Robotics Labb'); assert(r.choices.includes('Mechanical Engineering'));
+  assert.equal(h.calls.length,2); assert(!h.calls.some(c=>c.url.endsWith('/records')));
+});
+test('only exact confirmation permits the new department', async () => {
+  const h=harness([empty(),departments(),created(),verified()]);
+  const r=await h.post(request({department:'New Department',confirmedDepartment:'New Department'}));
+  assert.equal(r.created,true); assert.equal(h.calls[2].body.data[0][29].value,'New Department');
+  for(const confirmedDepartment of [true,'Old Department','new department']) {
+    const denied=harness([empty(),departments()]);
+    assert.equal((await denied.post(request({department:'New Department',confirmedDepartment}))).status,409);
+    assert.equal(denied.calls.length,2);
+  }
+});
+test('existing departments reuse canonical spelling and spacing', async () => {
+  const h=harness([empty(),departments(),created(),verified()]);
+  assert.equal((await h.post(request({department:'  mechanical   ENGINEERING  '}))).created,true);
+  assert.equal(h.calls[2].body.data[0][29].value,'Mechanical Engineering');
+});
+test('a corrected value that is also new requires its own confirmation', async () => {
+  const h=harness([empty(),departments()]);
+  const r=await h.post(request({department:'Corrected New Unit',confirmedDepartment:'Original New Unit'}));
+  assert.equal(r.departmentConfirmationRequired,true); assert.equal(r.department,'Corrected New Unit');
+});
+test('failed or malformed department lookup prevents a write, even with confirmation', async () => {
+  for(const response of [{ok:false,body:{}},{body:{}},{body:{properties:{choices:[{}]}}},new Error('Network unavailable')]) {
+    const h=harness([empty(),response]);
+    const r=await h.post(request({department:'New Unit',confirmedDepartment:'New Unit'}));
+    assert.equal(r.status,502); assert.equal(h.calls.length,2); assert.equal(r.created,undefined);
+  }
+});
+test('blank optional department does not add a choice or require confirmation', async () => {
+  const h=harness([empty(),created(),verified()]);
+  assert.equal((await h.post(request({department:''}))).created,true);
+  assert.equal(h.calls[1].body.data[0][29],undefined);
 });
