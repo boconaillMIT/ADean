@@ -43,6 +43,8 @@
   #status.error { color: var(--err-ink); }
   .event { border-top: 1px solid var(--line); padding: 14px 0 6px; }
   .event h2 { font-size: 15px; font-weight: 600; margin: 0 0 8px; }
+  .event.opened { border-left: 3px solid var(--accent); padding-left: 10px; }
+  .opened-label { color: var(--accent); font-size: 13px; font-weight: 600; margin: 0 0 8px; }
   label { display: block; font-size: 12px; color: var(--muted); margin: 8px 0 2px; }
   input[type=text], input[type=datetime-local], textarea {
     width: 100%; font: inherit; color: var(--ink); background: var(--wash);
@@ -53,7 +55,7 @@
   @media (max-width: 300px) { .pair { grid-template-columns: 1fr; } }
   .flag { background: var(--warn-bg); color: var(--warn-ink); border-radius: 4px; padding: 6px 8px; margin: 8px 0 0; font-size: 13px; }
   .check { display: flex; gap: 6px; align-items: center; margin: 4px 0 12px; color: var(--muted); font-size: 13px; }
-  .actions { margin: 10px 0 4px; }
+  .actions { display: flex; gap: 8px; flex-wrap: wrap; margin: 10px 0 4px; }
 </style>
 </head>
 <body>
@@ -173,6 +175,7 @@ function renderEvent(ev, index) {
 
   wrap.innerHTML = `
     <h2>${escapeHtml(ev.summary || "Untitled event")}</h2>
+    <p class="opened-label" id="opened${index}" hidden>✓ Opened in Outlook</p>
     <label for="t${index}">Title</label>
     <input type="text" id="t${index}" value="${escapeHtml(ev.summary)}">
     <div class="pair">
@@ -184,10 +187,14 @@ function renderEvent(ev, index) {
     <label for="d${index}">Notes</label>
     <textarea id="d${index}">${escapeHtml(ev.description)}</textarea>
     ${flags.map((f) => `<p class="flag">${escapeHtml(f)}</p>`).join("")}
-    <div class="actions"><button id="o${index}">Open as calendar entry</button></div>
+    <div class="actions">
+      <button id="o${index}">Open as calendar entry</button>
+      <button class="secondary" id="reopen${index}" hidden>Open again</button>
+    </div>
   `;
 
   wrap.querySelector(`#o${index}`).addEventListener("click", () => openAppointment(index));
+  wrap.querySelector(`#reopen${index}`).addEventListener("click", () => openAppointment(index));
   return wrap;
 }
 
@@ -212,6 +219,12 @@ function openAppointment(index) {
       body: notes.slice(0, MAX_FORM_BODY),
       requiredAttendees: []
     });
+    const button = document.getElementById(`o${index}`);
+    button.disabled = true;
+    button.textContent = "Opened in Outlook";
+    button.closest(".event").classList.add("opened");
+    document.getElementById(`opened${index}`).hidden = false;
+    document.getElementById(`reopen${index}`).hidden = false;
     setStatus("Entry opened. Review and save it in the form.");
   } catch (err) {
     setStatus(`Couldn't open the calendar form: ${err.message}`, true);
